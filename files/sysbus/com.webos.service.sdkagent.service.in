@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=com.webos.service.sdkagent
+Exec=@WEBOS_INSTALL_SBINDIR@/com.webos.service.sdkagent
+Type=static
+

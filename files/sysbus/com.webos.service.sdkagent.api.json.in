@@ -1,0 +1,13 @@
+{
+    "com.webos.service.sdkagent.group":[
+        "com.webos.service.sdkagent/collector/start",
+        "com.webos.service.sdkagent/collector/stop",
+        "com.webos.service.sdkagent/collector/restart",
+        "com.webos.service.sdkagent/collector/startOnBoot",
+        "com.webos.service.sdkagent/collector/getStatus",
+        "com.webos.service.sdkagent/collector/setConfig",
+        "com.webos.service.sdkagent/collector/getConfig",
+        "com.webos.service.sdkagent/collector/getData"
+    ]
+}
+
