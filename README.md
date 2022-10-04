@@ -6,20 +6,22 @@ sdkagent service for webOS OSE
 
 ## Description
 -----------
-This service provides resource monitoring features.
+SDK Agent service development for webosose project.
+SDK agent has a role for debugging and profiling.
 
 ### API summary
 
 provides methods to control telegraf for resource monitoring
-provides methods for agent features of SDK tools
 
 For telegraf
-1. Start
-2. Stop
-3. getState
-4. startOnBoot
-5. getStatus
-6. setConfig
-7. getConfig
-8. getData
-9. enableData
+1. collector/start
+2. collector/stop
+3. collector/getState
+4. collector/startOnBoot
+5. collector/getStatus
+6. collector/setConfig
+7. collector/getConfig
+8. collector/getData
+9. collector/enableData
+
+provides methods for agent features of SDK tools
