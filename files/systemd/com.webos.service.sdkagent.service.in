@@ -27,3 +27,5 @@ Environment=CHARSET=UTF-8
 ExecStart=/usr/sbin/com.webos.service.sdkagent
 Restart=on-failure
 
+[Install]
+WantedBy=multi-user.target
