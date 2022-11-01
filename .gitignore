@@ -1,1 +1,3 @@
 build/
+.vscode/
+com.webos.service.sdkagent.bb

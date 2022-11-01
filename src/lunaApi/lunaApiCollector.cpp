@@ -29,9 +29,9 @@ const LSMethod lunaApiCollector::collectorMethods[] = {
     { "restart",                    restart,                    LUNA_METHOD_FLAGS_NONE},
     { "startOnBoot",                startOnBoot,                LUNA_METHOD_FLAGS_NONE},
     { "getStatus",                  getStatus,                  LUNA_METHOD_FLAGS_NONE},
-    
-    { "setConfig",                  setConfig,                  LUNA_METHOD_FLAGS_NONE},
+
     { "getConfig",                  getConfig,                  LUNA_METHOD_FLAGS_NONE},
+    { "setConfig",                  setConfig,                  LUNA_METHOD_FLAGS_NONE},
     
     { "getData",                    getData,                    LUNA_METHOD_FLAGS_NONE},
     { NULL, NULL },
