@@ -209,7 +209,8 @@ bool lunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data) {
 	    openFile.close();
         writeFile.close();
         reply.put("returnValue", false);
-        reply.put("errorText", "Telegraf configuration Error : " + std::string(strerror(errno)));
+        reply.put("errorCode", 5);
+        reply.put("errorText", "Invalid configuration file : " + std::string(strerror(errno)));
         Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
         return false;
     }
@@ -301,7 +302,8 @@ bool lunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data) {
         // Not change conf file
         // tmpCmd = "rm " + tmpTelegrafConfPath;
         reply.put("returnValue", false);
-        reply.put("errorText", "Invalid Configurations.");
+        reply.put("errorCode", 4);
+        reply.put("errorText", "Invalid configurations");
     } else {
         // Change conf file
         tmpCmd = "mv " + tmpTelegrafConfPath + " " + telegrafConfPath;
@@ -327,7 +329,8 @@ bool lunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data) {
     if (!openFile || (openFile.fail())) {
         openFile.close();
         reply.put("returnValue", false);
-        reply.put("errorText", "Telegraf configuration Error : " + std::string(strerror(errno)));
+        reply.put("errorCode", 5);
+        reply.put("errorText", "Invalid configuration file : " + std::string(strerror(errno)));
         Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
         return false;
     }
@@ -441,7 +444,8 @@ bool lunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data) {
     std::string cmdResult = Instance()->executeCommand(tmpCmd);
     if (cmdResult.find("E! [telegraf] Error") != std::string::npos) {
         reply.put("returnValue", false);
-        reply.put("errorText", "Invalid Parameter.");
+        reply.put("errorCode", 4);
+        reply.put("errorText", "Invalid configurations");
         Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
         return false;
     }
