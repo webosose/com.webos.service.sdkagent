@@ -21,7 +21,7 @@ set(CMAKE_BUILD_TYPE Debug)
 
 include(webOS/webOS)
 webos_modules_init(1 6 3)
-webos_component(0 0 1)
+webos_component(1 0 0)
 webos_include_install_paths()
 
 include(FindPkgConfig)
