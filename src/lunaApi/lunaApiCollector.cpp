@@ -58,22 +58,24 @@ lunaApiCollector::lunaApiCollector() {
 lunaApiCollector::~lunaApiCollector() {
 }
 
-// trim from left 
-inline std::string& ltrim(std::string& s, const char* t = " \t\n\r\f\v")
-{
-	s.erase(0, s.find_first_not_of(t));
-	return s;
+std::string& ltrim(std::string &s) {
+    auto it = std::find_if(s.begin(), s.end(),
+                    [](char c) {
+                        return !std::isspace<char>(c, std::locale::classic());
+                    });
+    s.erase(s.begin(), it);
+    return s;
 }
-// trim from right 
-inline std::string& rtrim(std::string& s, const char* t = " \t\n\r\f\v")
-{
-	s.erase(s.find_last_not_of(t) + 1);
-	return s;
+std::string& rtrim(std::string &s) {
+    auto it = std::find_if(s.rbegin(), s.rend(),
+                    [](char c) {
+                        return !std::isspace<char>(c, std::locale::classic());
+                    });
+    s.erase(it.base(), s.end());
+    return s;
 }
-// trim from left & right 
-inline std::string& trim(std::string& s, const char* t = " \t\n\r\f\v")
-{
-	return ltrim(rtrim(s, t), t);
+std::string& trim(std::string &s) {
+    return ltrim(rtrim(s));
 }
 
 // API implementations START
@@ -116,6 +118,23 @@ bool lunaApiCollector::restart(LSHandle *sh, LSMessage *msg, void *data) {
     return true;
 }
 
+bool lunaApiCollector::cbStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
+    if (!response["returnValue"].asBool()) {
+        SDK_LOG_INFO(MSGID_SDKAGENT, 0, "[ %s : %d ] %s( ... )", __FILE__, __LINE__, __FUNCTION__);
+        Instance()->LSMessageReplyErrorUnknown(sh, (LSMessage *)user_data);
+        return false;
+    }
+
+    Instance()->LSMessageReplyPayload(sh, (LSMessage *)user_data, NULL);
+
+    return true;
+}
+
 bool lunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data) {
     json_object *object = json_tokener_parse(LSMessageGetPayload(msg));
     if (!object) {
@@ -129,11 +148,48 @@ bool lunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data) {
         return false;
     }
 
-    std::string tmpCmd = "systemctl ";
-    tmpCmd += (paramObj["enable"].asBool() ? "enable" : "disable");
-    tmpCmd += " telegraf";
-    Instance()->executeCommand(tmpCmd);
-    Instance()->LSMessageReplyPayload(sh, msg, NULL);
+    pbnjson::JValue param = pbnjson::Object();
+    param.put("appId", "com.webos.service.sdkagent");
+    param.put("key", "startOnBoot");
+    pbnjson::JValue value = pbnjson::Object();
+    value.put("enabled", paramObj["enable"].asBool());
+    param.put("value", value);
+
+    LSError lserror;
+    LSErrorInit(&lserror);
+    LSMessageRef(msg);
+    if (!LSCall(Instance()->pLSHandle,
+                "luna://com.webos.service.preferences/appProperties/setAppProperty",
+                param.stringify().c_str(),
+                lunaApiCollector::cbStartOnBoot,
+                (void *)msg,
+                NULL,
+                &lserror))
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+        SDK_LOG_INFO(MSGID_SDKAGENT, 0, "[ %s : %d ] %s( ... )", __FILE__, __LINE__, __FUNCTION__);
+        Instance()->LSMessageReplyErrorUnknown(sh, msg);
+        return false;
+    }
+
+    return true;
+}
+
+bool lunaApiCollector::cbGetStatus(LSHandle *sh, LSMessage *msg, void *user_data)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
+    bool isStartOnBoot = (response["startOnBoot"])["enabled"].asBool();
+
+    pbnjson::JValue reply = pbnjson::Object();
+    reply.put("returnValue", true);
+    reply.put("status", Instance()->executeCommand("systemctl is-active telegraf"));
+    reply.put("startOnBoot", isStartOnBoot);
+
+    Instance()->LSMessageReplyPayload(sh, (LSMessage *)user_data, (char *)(reply.stringify().c_str()));
 
     return true;
 }
@@ -144,13 +200,23 @@ bool lunaApiCollector::getStatus(LSHandle *sh, LSMessage *msg, void *data) {
         Instance()->LSMessageReplyErrorBadJSON(sh, msg);
         return false;
     }
-    
-    pbnjson::JValue reply = pbnjson::Object();
-    reply.put("returnValue", true);
-    reply.put("status", Instance()->executeCommand("systemctl is-active telegraf"));
-    reply.put("startOnBoot", (strcasecmp(Instance()->executeCommand("systemctl is-enabled telegraf").c_str(), "enabled") == 0));
 
-    Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
+    LSError lserror;
+    LSErrorInit(&lserror);
+    LSMessageRef(msg);
+    if (!LSCall(Instance()->pLSHandle,
+                "luna://com.webos.service.preferences/appProperties/getAppProperty",
+                "{\"appId\":\"com.webos.service.sdkagent\", \"key\":\"startOnBoot\"}",
+                lunaApiCollector::cbGetStatus,
+                (void *)msg,
+                NULL,
+                &lserror))
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+        Instance()->LSMessageReplyErrorUnknown(sh, msg);
+        return false;
+    }
 
     return true;
 }
@@ -211,7 +277,7 @@ bool lunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data) {
         reply.put("returnValue", false);
         reply.put("errorCode", 5);
         reply.put("errorText", "Invalid configuration file : " + std::string(strerror(errno)));
-        Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
+        Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
         return false;
     }
 
@@ -311,7 +377,7 @@ bool lunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data) {
     }
     Instance()->executeCommand(tmpCmd);
 
-    Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
+    Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
 
     return true;
 }
@@ -331,7 +397,7 @@ bool lunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data) {
         reply.put("returnValue", false);
         reply.put("errorCode", 5);
         reply.put("errorText", "Invalid configuration file : " + std::string(strerror(errno)));
-        Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
+        Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
         return false;
     }
 
@@ -353,7 +419,7 @@ bool lunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data) {
                 break;
             } else {
                 if (line.find("=") == std::string::npos) {
-                    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "npos line : %s", line.c_str());
+                    // SDK_LOG_INFO(MSGID_SDKAGENT, 0, "npos line : %s", line.c_str());
                     break;
                 }
 
@@ -380,7 +446,7 @@ bool lunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data) {
 
     reply.put("returnValue", true);
     reply.put("config", replyConfig);
-    Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
+    Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
 
     return true;
 }
@@ -446,7 +512,7 @@ bool lunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data) {
         reply.put("returnValue", false);
         reply.put("errorCode", 4);
         reply.put("errorText", "Invalid configurations");
-        Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
+        Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
         return false;
     }
     pbnjson::JValue dataArray = pbnjson::Array();
@@ -485,9 +551,42 @@ bool lunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data) {
 
     reply.put("returnValue", true);
     reply.put("dataArray", dataArray);
-    Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
+    Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
 
     return true;
+}
+
+bool lunaApiCollector::cbInitStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
+    if (response["returnValue"].asBool()) {
+        if ((response["startOnBoot"])["enabled"].asBool()) {
+            Instance()->executeCommand("systemctl start telegraf");
+        }
+    } else {
+        Instance()->initialize();
+    }
+
+    return true;
+}
+
+void lunaApiCollector::initialize() {
+    LSError lserror;
+    LSErrorInit(&lserror);
+    if (!LSCall(Instance()->pLSHandle,
+                "luna://com.webos.service.preferences/appProperties/getAppProperty",
+                "{\"appId\":\"com.webos.service.sdkagent\", \"key\":\"startOnBoot\"}",
+                lunaApiCollector::cbInitStartOnBoot,
+                NULL,
+                NULL,
+                &lserror))
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+    }
 }
 // API implementations END
 

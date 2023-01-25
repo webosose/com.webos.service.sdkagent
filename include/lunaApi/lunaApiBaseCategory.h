@@ -34,6 +34,7 @@ protected:
     LSMethod    *pMethods;
 
 protected:
+    void LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, char *payload);

@@ -18,7 +18,9 @@
 #include "lunaApiBaseCategory.h"
 
 lunaApiBaseCategory::lunaApiBaseCategory():
-pLSHandle(NULL) {
+pLSHandle(NULL),
+pCategory(NULL),
+pMethods(NULL) {
 }
 
 lunaApiBaseCategory::~lunaApiBaseCategory() {
@@ -38,6 +40,19 @@ bool lunaApiBaseCategory::initLunaServiceCategory(LSHandle *lsHandle) {
     pLSHandle = lsHandle;
 
     return true;
+}
+
+void lunaApiBaseCategory::LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg) {
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":1,\"errorText\":\"Unknown error.\"}", NULL);
+    if (!retVal) {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+    }
+
+    return;
 }
 
 void lunaApiBaseCategory::LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessage *msg) {
@@ -108,7 +123,6 @@ void lunaApiBaseCategory::postEvent(LSHandle *handle, void *subscribeKey, void *
 
 std::string lunaApiBaseCategory::executeCommand(std::string pszCommand) {
     FILE *fp = popen(pszCommand.c_str(), "r");
-    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s : %s", __FUNCTION__, pszCommand.c_str());
     if (!fp) {
         SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error (!fp) [%d:%s]\n", errno, strerror(errno));
         return NULL;
@@ -118,6 +132,10 @@ std::string lunaApiBaseCategory::executeCommand(std::string pszCommand) {
     char *ln = NULL;
     size_t len = 0;
     while (getline(&ln, &len, fp) != -1) {
+        if (ln == NULL) {
+            SDK_LOG_INFO(MSGID_SDKAGENT, 0, "[ %s : %d ] %s( ... ), %s", __FILE__, __LINE__, __FUNCTION__, "ln == NULL");
+            continue;
+        }
         retStr = retStr.append(ln);
         if (retStr.at(retStr.length()-1) == '\n') {
             retStr = retStr.erase(retStr.length()-1, 1);
@@ -133,8 +151,7 @@ pbnjson::JValue lunaApiBaseCategory::convertStringToJson(const char *rawData)
     pbnjson::JInput input(rawData);
     pbnjson::JSchema schema = pbnjson::JSchemaFragment("{}");
     pbnjson::JDomParser parser;
-    if (!parser.parse(input, schema))
-    {
+    if (!parser.parse(input, schema)) {
         return pbnjson::JValue();
     }
     return parser.getDom();

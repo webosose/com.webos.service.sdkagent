@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
     
     LSError lserror;
     LSErrorInit(&lserror);
-    char *serviceId = "com.webos.service.sdkagent";
+    const char *serviceId = "com.webos.service.sdkagent";
     LSHandle *lsHandle = NULL;
 
     bool retVal = false;
@@ -77,6 +77,7 @@ int main(int argc, char **argv) {
     }
 
     SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s( ... ) , com.webos.service.sdkagent daemon started" , __FUNCTION__);
+    lunaApiCollector::Instance()->initialize();
     g_main_loop_run(mainLoop);
 
     return 0;
