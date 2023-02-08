@@ -14,10 +14,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include <algorithm>
-#include <fstream>
-#include <iostream>
-
 #include "logging.h"
 #include "lunaApiCollector.h"
 
@@ -78,7 +74,6 @@ std::string& trim(std::string &s) {
     return ltrim(rtrim(s));
 }
 
-// API implementations START
 bool lunaApiCollector::start(LSHandle *sh, LSMessage *msg, void *data) {
     json_object *object = json_tokener_parse(LSMessageGetPayload(msg));
     if (!object) {
@@ -588,8 +583,33 @@ void lunaApiCollector::initialize() {
         LSErrorFree(&lserror);
     }
 }
-// API implementations END
 
 void lunaApiCollector::postEvent(void *subscribeKey, void *payload) {
     lunaApiBaseCategory::postEvent(Instance()->pLSHandle, subscribeKey, payload);
+}
+
+/**
+ * https://docs.influxdata.com/influxdb/v1.8/write_protocols/line_protocol_reference/
+ * https://docs.influxdata.com/influxdb/v1.8/write_protocols/line_protocol_tutorial/
+ * 
+ * std::string asdf = "socketwriter position=75900099";
+ * Instance()->sendToTelegraf(asdf);
+ */
+void lunaApiCollector::sendToTelegraf(std::string &data) {
+    int sock;
+    struct sockaddr_un sock_name;
+
+    sock = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error opening datagram socket [%d:%s]\n", errno, strerror(errno));
+        return;
+    }
+
+    sock_name.sun_family = AF_UNIX;
+    strncpy(sock_name.sun_path, "/tmp/telegraf.sock", (18+1));
+
+    if (sendto(sock, data.c_str(), data.length(), 0, (struct sockaddr *) &sock_name, sizeof(struct sockaddr_un)) < 0) {
+        SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error sending datagram message [%d:%s]\n", errno, strerror(errno));
+    }
+    close(sock);
 }

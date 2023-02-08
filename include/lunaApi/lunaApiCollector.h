@@ -20,6 +20,14 @@
 #include <json-c/json.h>
 #include <lunaApiBaseCategory.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <stdio.h>
+#include <algorithm>
+#include <fstream>
+#include <iostream>
+
 class lunaApiCollector : public lunaApiBaseCategory {
 public:
     ~lunaApiCollector();
@@ -30,6 +38,8 @@ public:
     }
 
     void initialize();
+
+    void sendToTelegraf(std::string &s);
 
 private:
     lunaApiCollector();
