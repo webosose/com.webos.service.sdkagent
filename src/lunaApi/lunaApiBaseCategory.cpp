@@ -17,22 +17,25 @@
 #include "logging.h"
 #include "lunaApiBaseCategory.h"
 
-lunaApiBaseCategory::lunaApiBaseCategory():
-pLSHandle(NULL),
-pCategory(NULL),
-pMethods(NULL) {
+LunaApiBaseCategory::LunaApiBaseCategory() : pLSHandle(NULL),
+                                             pCategory(NULL),
+                                             pMethods(NULL)
+{
 }
 
-lunaApiBaseCategory::~lunaApiBaseCategory() {
+LunaApiBaseCategory::~LunaApiBaseCategory()
+{
 }
 
-bool lunaApiBaseCategory::initLunaServiceCategory(LSHandle *lsHandle) {
+bool LunaApiBaseCategory::initLunaServiceCategory(LSHandle *lsHandle)
+{
     LSError lserror;
     LSErrorInit(&lserror);
 
     SDK_LOG_INFO(MSGID_SDKAGENT, 0, "[ %s : %d ] %s( ... )", __FILE__, __LINE__, __FUNCTION__);
 
-    if(!LSRegisterCategory(lsHandle, pCategory, pMethods, NULL, NULL, &lserror)) {
+    if (!LSRegisterCategory(lsHandle, pCategory, pMethods, NULL, NULL, &lserror))
+    {
         LSErrorPrint(&lserror, stderr);
         LSErrorFree(&lserror);
         return false;
@@ -42,12 +45,14 @@ bool lunaApiBaseCategory::initLunaServiceCategory(LSHandle *lsHandle) {
     return true;
 }
 
-void lunaApiBaseCategory::LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg) {
+void LunaApiBaseCategory::LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg)
+{
     LSError lserror;
     LSErrorInit(&lserror);
 
     bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":1,\"errorText\":\"Unknown error.\"}", NULL);
-    if (!retVal) {
+    if (!retVal)
+    {
         LSErrorPrint(&lserror, stderr);
         LSErrorFree(&lserror);
     }
@@ -55,12 +60,14 @@ void lunaApiBaseCategory::LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *ms
     return;
 }
 
-void lunaApiBaseCategory::LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessage *msg) {
+void LunaApiBaseCategory::LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessage *msg)
+{
     LSError lserror;
     LSErrorInit(&lserror);
 
     bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":2,\"errorText\":\"Invalid parameters.\"}", NULL);
-    if (!retVal) {
+    if (!retVal)
+    {
         LSErrorPrint(&lserror, stderr);
         LSErrorFree(&lserror);
     }
@@ -68,12 +75,14 @@ void lunaApiBaseCategory::LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessa
     return;
 }
 
-void lunaApiBaseCategory::LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *msg) {
+void LunaApiBaseCategory::LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *msg)
+{
     LSError lserror;
     LSErrorInit(&lserror);
 
     bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":3,\"errorText\":\"Malformed json.\"}", NULL);
-    if (!retVal) {
+    if (!retVal)
+    {
         LSErrorPrint(&lserror, stderr);
         LSErrorFree(&lserror);
     }
@@ -81,19 +90,24 @@ void lunaApiBaseCategory::LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *ms
     return;
 }
 
-void lunaApiBaseCategory::LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, char *payload) {
+void LunaApiBaseCategory::LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, char *payload)
+{
     LSError lserror;
     LSErrorInit(&lserror);
 
     bool retVal;
 
-    if (payload == NULL) {
+    if (payload == NULL)
+    {
         retVal = LSMessageReply(sh, msg, "{\"returnValue\":true}", NULL);
-    } else {
+    }
+    else
+    {
         retVal = LSMessageReply(sh, msg, payload, NULL);
     }
 
-    if (!retVal) {
+    if (!retVal)
+    {
         LSErrorPrint(&lserror, stderr);
         LSErrorFree(&lserror);
     }
@@ -101,7 +115,8 @@ void lunaApiBaseCategory::LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, ch
     return;
 }
 
-void lunaApiBaseCategory::postEvent(LSHandle *handle, void *subscribeKey, void *payload) {
+void LunaApiBaseCategory::postEvent(LSHandle *handle, void *subscribeKey, void *payload)
+{
     LSError lserror;
     LSErrorInit(&lserror);
 
@@ -110,10 +125,10 @@ void lunaApiBaseCategory::postEvent(LSHandle *handle, void *subscribeKey, void *
         handle,
         (char *)subscribeKey,
         (char *)payload,
-        &lserror
-    );
+        &lserror);
 
-    if (!retVal) {
+    if (!retVal)
+    {
         LSErrorPrint(&lserror, stderr);
         LSErrorFree(&lserror);
     }
@@ -121,9 +136,11 @@ void lunaApiBaseCategory::postEvent(LSHandle *handle, void *subscribeKey, void *
     return;
 }
 
-std::string lunaApiBaseCategory::executeCommand(std::string pszCommand) {
+std::string LunaApiBaseCategory::executeCommand(std::string pszCommand)
+{
     FILE *fp = popen(pszCommand.c_str(), "r");
-    if (!fp) {
+    if (!fp)
+    {
         SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error (!fp) [%d:%s]\n", errno, strerror(errno));
         return NULL;
     }
@@ -131,14 +148,17 @@ std::string lunaApiBaseCategory::executeCommand(std::string pszCommand) {
     std::string retStr = "";
     char *ln = NULL;
     size_t len = 0;
-    while (getline(&ln, &len, fp) != -1) {
-        if (ln == NULL) {
+    while (getline(&ln, &len, fp) != -1)
+    {
+        if (ln == NULL)
+        {
             SDK_LOG_INFO(MSGID_SDKAGENT, 0, "[ %s : %d ] %s( ... ), %s", __FILE__, __LINE__, __FUNCTION__, "ln == NULL");
             continue;
         }
         retStr = retStr.append(ln);
-        if (retStr.at(retStr.length()-1) == '\n') {
-            retStr = retStr.erase(retStr.length()-1, 1);
+        if (retStr.at(retStr.length() - 1) == '\n')
+        {
+            retStr = retStr.erase(retStr.length() - 1, 1);
         }
     }
     free(ln);
@@ -146,12 +166,13 @@ std::string lunaApiBaseCategory::executeCommand(std::string pszCommand) {
     return retStr;
 }
 
-pbnjson::JValue lunaApiBaseCategory::convertStringToJson(const char *rawData)
+pbnjson::JValue LunaApiBaseCategory::convertStringToJson(const char *rawData)
 {
     pbnjson::JInput input(rawData);
     pbnjson::JSchema schema = pbnjson::JSchemaFragment("{}");
     pbnjson::JDomParser parser;
-    if (!parser.parse(input, schema)) {
+    if (!parser.parse(input, schema))
+    {
         return pbnjson::JValue();
     }
     return parser.getDom();

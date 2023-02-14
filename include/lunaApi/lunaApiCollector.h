@@ -20,19 +20,26 @@
 #include <json-c/json.h>
 #include <lunaApiBaseCategory.h>
 
-class lunaApiCollector : public lunaApiBaseCategory {
-public:
-    ~lunaApiCollector();
+#include <algorithm>
+#include <fstream>
+#include <iostream>
 
-    static lunaApiCollector* Instance() {
-        if (!pInstance) pInstance = new lunaApiCollector;
+class LunaApiCollector : public LunaApiBaseCategory
+{
+public:
+    ~LunaApiCollector();
+
+    static LunaApiCollector *Instance()
+    {
+        if (!pInstance)
+            pInstance = new LunaApiCollector;
         return pInstance;
     }
 
     void initialize();
 
 private:
-    lunaApiCollector();
+    LunaApiCollector();
 
     static const LSMethod collectorMethods[];
     json_object *availableConfigurationJson;
@@ -57,7 +64,7 @@ private:
     static bool cbGetStatus(LSHandle *sh, LSMessage *msg, void *user_data);
 
 private:
-    static lunaApiCollector *pInstance;
+    static LunaApiCollector *pInstance;
 };
 
 #endif

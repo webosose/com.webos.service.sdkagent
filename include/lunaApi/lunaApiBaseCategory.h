@@ -21,17 +21,18 @@
 #include <pbnjson.hpp>
 #include <string.h>
 
-class lunaApiBaseCategory {
+class LunaApiBaseCategory
+{
 public:
-    ~lunaApiBaseCategory();
+    ~LunaApiBaseCategory();
 
     bool initLunaServiceCategory(LSHandle *);
 
 protected:
-    lunaApiBaseCategory();
+    LunaApiBaseCategory();
 
-    const char  *pCategory;
-    LSMethod    *pMethods;
+    const char *pCategory;
+    LSMethod *pMethods;
 
 protected:
     void LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg);
@@ -40,13 +41,13 @@ protected:
     void LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, char *payload);
 
     std::string executeCommand(std::string);
-    
+
     pbnjson::JValue convertStringToJson(const char *rawData);
 
     static void postEvent(LSHandle *handle, void *subscribeKey, void *payload);
 
 protected:
-    LSHandle    *pLSHandle;
+    LSHandle *pLSHandle;
 };
 
 #endif

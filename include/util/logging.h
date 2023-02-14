@@ -35,10 +35,12 @@
         PmLogDebug(getServiceContext(), ##__VA_ARGS__)
 
 void logKmsg(const char *fmt, ...);
-#define SDK_KMSG_DEBUG_MSG(b, fmt, arg...)   if( (b) ) logKmsg(fmt, ##arg)
+#define SDK_KMSG_DEBUG_MSG(b, fmt, arg...) \
+        if ((b))                           \
+        logKmsg(fmt, ##arg)
 
 extern PmLogContext getServiceContext();
 
-#define MSGID_SDKAGENT   "SDK_AGENT"
+#define MSGID_SDKAGENT "SDK_AGENT"
 
 #endif

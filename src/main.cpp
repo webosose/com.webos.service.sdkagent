@@ -19,65 +19,74 @@
 
 GMainLoop *mainLoop;
 
-void signalHandler(int signal) {
-    switch(signal) {
-        case SIGSTOP:
-            SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGSTOP\n" , MSGID_SDKAGENT, __FUNCTION__);
-            break;
+void signalHandler(int signal)
+{
+    switch (signal)
+    {
+    case SIGSTOP:
+        SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGSTOP\n", MSGID_SDKAGENT, __FUNCTION__);
+        break;
 
-        case SIGCONT:
-            SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGCONT\n" , MSGID_SDKAGENT, __FUNCTION__);
-            break;
+    case SIGCONT:
+        SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGCONT\n", MSGID_SDKAGENT, __FUNCTION__);
+        break;
 
-        case SIGTERM:
-            SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGTERM\n" , MSGID_SDKAGENT, __FUNCTION__);
-            if (g_main_loop_is_running(mainLoop)) g_main_loop_quit(mainLoop);
-            g_main_loop_unref(mainLoop);
-            break;
+    case SIGTERM:
+        SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGTERM\n", MSGID_SDKAGENT, __FUNCTION__);
+        if (g_main_loop_is_running(mainLoop))
+            g_main_loop_quit(mainLoop);
+        g_main_loop_unref(mainLoop);
+        break;
 
-        case SIGINT:
-            SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGINT\n" , MSGID_SDKAGENT, __FUNCTION__);
-            if (g_main_loop_is_running(mainLoop)) g_main_loop_quit(mainLoop);
-            g_main_loop_unref(mainLoop);
-            break;
+    case SIGINT:
+        SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGINT\n", MSGID_SDKAGENT, __FUNCTION__);
+        if (g_main_loop_is_running(mainLoop))
+            g_main_loop_quit(mainLoop);
+        g_main_loop_unref(mainLoop);
+        break;
     }
 }
 
-void registSignalHandler() {
+void registSignalHandler()
+{
     /*
-    * Register a function to be able to gracefully handle termination signals
-    * from the OS or other processes.
-    */
+     * Register a function to be able to gracefully handle termination signals
+     * from the OS or other processes.
+     */
     signal(SIGSTOP, signalHandler);
     signal(SIGCONT, signalHandler);
     signal(SIGTERM, signalHandler);
-    signal(SIGINT,  signalHandler);
+    signal(SIGINT, signalHandler);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     registSignalHandler();
 
     mainLoop = g_main_loop_new(NULL, FALSE);
-    
+
     LSError lserror;
     LSErrorInit(&lserror);
     const char *serviceId = "com.webos.service.sdkagent";
     LSHandle *lsHandle = NULL;
 
     bool retVal = false;
-    if (LSRegister(serviceId, &lsHandle, &lserror)) {
-        if (LSGmainAttach(lsHandle, mainLoop, &lserror)) {
-            retVal = lunaApiCollector::Instance()->initLunaServiceCategory(lsHandle);
+    if (LSRegister(serviceId, &lsHandle, &lserror))
+    {
+        if (LSGmainAttach(lsHandle, mainLoop, &lserror))
+        {
+            retVal = LunaApiCollector::Instance()->initLunaServiceCategory(lsHandle);
         }
     }
-    if (!retVal) {
-        SDK_LOG_CRITICAL(MSGID_SDKAGENT, 1, PMLOGKS("ERRTEXT", lserror.message), "Could not initialize %s" , serviceId);
+    if (!retVal)
+    {
+        SDK_LOG_CRITICAL(MSGID_SDKAGENT, 1, PMLOGKS("ERRTEXT", lserror.message), "Could not initialize %s", serviceId);
         LSErrorFree(&lserror);
         exit(-1);
     }
 
-    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s( ... ) , com.webos.service.sdkagent daemon started" , __FUNCTION__);
-    lunaApiCollector::Instance()->initialize();
+    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s( ... ) , com.webos.service.sdkagent daemon started", __FUNCTION__);
+    LunaApiCollector::Instance()->initialize();
     g_main_loop_run(mainLoop);
 
     return 0;
