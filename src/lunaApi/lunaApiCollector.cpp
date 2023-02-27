@@ -15,9 +15,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "logging.h"
+#include "threadForInterval.h"
+#include "threadForSocket.h"
 #include "lunaApiCollector.h"
 
-LunaApiCollector *LunaApiCollector::pInstance = NULL;
+LunaApiCollector *LunaApiCollector::_instance = NULL;
 
 const LSMethod LunaApiCollector::collectorMethods[] = {
     {"start", start, LUNA_METHOD_FLAGS_NONE},
@@ -50,10 +52,15 @@ LunaApiCollector::LunaApiCollector()
     pMethods = (LSMethod *)collectorMethods;
 
     availableConfigurationJson = json_tokener_parse(availableConfiguration.c_str());
+
+    pThreadForInterval = new ThreadForInterval;
+    pThreadForSocket = new ThreadForSocket;
 }
 
 LunaApiCollector::~LunaApiCollector()
 {
+    delete pThreadForInterval;
+    delete pThreadForSocket;
 }
 
 std::string &ltrim(std::string &s)
@@ -128,9 +135,6 @@ bool LunaApiCollector::restart(LSHandle *sh, LSMessage *msg, void *data)
 
 bool LunaApiCollector::cbStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data)
 {
-    LSError lserror;
-    LSErrorInit(&lserror);
-
     pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
     if (!response["returnValue"].asBool())
     {
@@ -188,9 +192,6 @@ bool LunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data)
 
 bool LunaApiCollector::cbGetStatus(LSHandle *sh, LSMessage *msg, void *user_data)
 {
-    LSError lserror;
-    LSErrorInit(&lserror);
-
     pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
     bool isStartOnBoot = (response["startOnBoot"])["enabled"].asBool();
 
@@ -643,9 +644,6 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
 
 bool LunaApiCollector::cbInitStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data)
 {
-    LSError lserror;
-    LSErrorInit(&lserror);
-
     pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
     if (response["returnValue"].asBool())
     {
@@ -703,4 +701,10 @@ void LunaApiCollector::initialize()
 void LunaApiCollector::postEvent(void *subscribeKey, void *payload)
 {
     LunaApiBaseCategory::postEvent(Instance()->pLSHandle, subscribeKey, payload);
+}
+
+void LunaApiCollector::sendToTelegraf(std::string &data)
+{
+    if (pThreadForSocket != NULL)
+        pThreadForSocket->sendToMSGQ(data);
 }

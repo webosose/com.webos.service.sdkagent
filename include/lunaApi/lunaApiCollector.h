@@ -19,32 +19,49 @@
 
 #include <json-c/json.h>
 #include <lunaApiBaseCategory.h>
-
 #include <algorithm>
 #include <fstream>
 #include <iostream>
 
+#include "threadForInterval.h"
+#include "threadForSocket.h"
+
 class LunaApiCollector : public LunaApiBaseCategory
 {
 public:
-    ~LunaApiCollector();
-
     static LunaApiCollector *Instance()
     {
-        if (!pInstance)
-            pInstance = new LunaApiCollector;
-        return pInstance;
+        if (_instance == nullptr)
+        {
+            _instance = new LunaApiCollector();
+            atexit(release_instance);
+        }
+        return _instance;
+    }
+    static void release_instance()
+    {
+        if (_instance)
+        {
+            delete _instance;
+            _instance = nullptr;
+        }
     }
 
     void initialize();
+    void sendToTelegraf(std::string &data);
 
 private:
+    static LunaApiCollector *_instance;
+
     LunaApiCollector();
+    ~LunaApiCollector();
 
     static const LSMethod collectorMethods[];
     json_object *availableConfigurationJson;
 
-private:
+    ThreadForInterval *pThreadForInterval;
+    ThreadForSocket *pThreadForSocket;
+
     static bool start(LSHandle *sh, LSMessage *msg, void *data);
     static bool stop(LSHandle *sh, LSMessage *msg, void *data);
     static bool restart(LSHandle *sh, LSMessage *msg, void *data);
@@ -62,9 +79,6 @@ private:
     static bool cbInitStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data);
     static bool cbStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data);
     static bool cbGetStatus(LSHandle *sh, LSMessage *msg, void *user_data);
-
-private:
-    static LunaApiCollector *pInstance;
 };
 
 #endif

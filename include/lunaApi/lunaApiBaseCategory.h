@@ -19,7 +19,6 @@
 
 #include <luna-service2/lunaservice.h>
 #include <pbnjson.hpp>
-#include <string.h>
 
 class LunaApiBaseCategory
 {
@@ -27,6 +26,10 @@ public:
     ~LunaApiBaseCategory();
 
     bool initLunaServiceCategory(LSHandle *);
+    std::string executeCommand(std::string);
+    pbnjson::JValue convertStringToJson(const char *rawData);
+
+    LSHandle *pLSHandle;
 
 protected:
     LunaApiBaseCategory();
@@ -34,20 +37,12 @@ protected:
     const char *pCategory;
     LSMethod *pMethods;
 
-protected:
     void LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, char *payload);
 
-    std::string executeCommand(std::string);
-
-    pbnjson::JValue convertStringToJson(const char *rawData);
-
     static void postEvent(LSHandle *handle, void *subscribeKey, void *payload);
-
-protected:
-    LSHandle *pLSHandle;
 };
 
 #endif
