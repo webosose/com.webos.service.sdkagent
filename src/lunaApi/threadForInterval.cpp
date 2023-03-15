@@ -92,74 +92,92 @@ bool ThreadForInterval::cb_getAllAppProperties(LSHandle *sh, LSMessage *msg, voi
 gpointer ThreadForInterval::intervalHandle_process(gpointer data)
 {
     IntervalHandle *intervalHandle = (IntervalHandle *)data;
-    int mIntervalSecCnt = 1;
-    int configIntervalSecond = 1;
+    int intervalSecCnt = 1;
+    int configIntervalSecond = 0;
     while (intervalHandle != NULL)
     {
         gpointer msg = g_async_queue_try_pop(intervalHandle->queue);
         if ((msg) && (msg == GINT_TO_POINTER(INTERVAL_THREAD_MSG_STOP)))
             break;
 
-        std::string active = LunaApiCollector::Instance()->executeCommand("systemctl is-active telegraf");
-        if ((!active.empty()) && (active == "active") && (mIntervalSecCnt == configIntervalSecond))
+        std::string stateResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Active: active (running)\"");
+        if (!stateResult.empty()) // if telegraf is active
         {
-            LSError lserror;
-            LSErrorInit(&lserror);
-            if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
-                        "luna://com.webos.service.preferences/appProperties/getAllAppProperties",
-                        "{\"appId\":\"com.webos.service.sdkagent\"}",
-                        ThreadForInterval::cb_getAllAppProperties,
-                        NULL,
-                        NULL,
-                        &lserror))
+            bool isNeedUpdateInterval = false;
+            stateResult = stateResult.substr(stateResult.find(";") + 2);
+            stateResult = stateResult.substr(0, stateResult.find(" "));
+            if (configIntervalSecond <= 0) // initial state
             {
-                LSErrorPrint(&lserror, stderr);
-                LSErrorFree(&lserror);
+                isNeedUpdateInterval = true;
             }
-        }
+            else if (stateResult.find("s") != std::string::npos) // telegraf was run in 60 seconds
+            {
+                isNeedUpdateInterval = true;
+            }
+            if (isNeedUpdateInterval) // get Interval from telegraf status log
+            {
+                std::string cmdResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Interval:\"");
+                if (!cmdResult.empty())
+                {
+                    int tmpIntervalSecond = 0;
+                    cmdResult = cmdResult.substr(cmdResult.find("Interval:"));
+                    cmdResult = cmdResult.substr(cmdResult.find(":") + 1);
+                    cmdResult = cmdResult.substr(0, cmdResult.find(","));
+                    if (cmdResult.find("ms") != std::string::npos)
+                    {
+                        tmpIntervalSecond += 1;
+                        cmdResult = cmdResult.substr(cmdResult.find("ms") + 1);
+                    }
+                    if (cmdResult.find("h") != std::string::npos)
+                    {
+                        std::string h = cmdResult.substr(0, cmdResult.find("h"));
+                        int hour = atoi(h.c_str());
+                        tmpIntervalSecond += hour * 60 * 60;
+                        cmdResult = cmdResult.substr(cmdResult.find("h") + 1);
+                    }
+                    if (cmdResult.find("m") != std::string::npos)
+                    {
+                        std::string m = cmdResult.substr(0, cmdResult.find("m"));
+                        int minute = atoi(m.c_str());
+                        tmpIntervalSecond += minute * 60;
+                        cmdResult = cmdResult.substr(cmdResult.find("m") + 1);
+                    }
+                    if (cmdResult.find("s") != std::string::npos)
+                    {
+                        std::string s = cmdResult.substr(0, cmdResult.find("s"));
+                        int second = atoi(s.c_str());
+                        tmpIntervalSecond += second;
+                    }
+                    if (configIntervalSecond != tmpIntervalSecond)
+                    {
+                        configIntervalSecond = tmpIntervalSecond;
+                        intervalSecCnt = 1;
+                    }
+                }
+            }
+            if (intervalSecCnt <= 1)
+            {
+                intervalSecCnt = configIntervalSecond;
 
-        std::string cmdResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Interval:\"");
-        if (!cmdResult.empty())
-        {
-            int tmpIntervalSecond = 0;
-            cmdResult = cmdResult.substr(cmdResult.find("Interval:"));
-            cmdResult = cmdResult.substr(cmdResult.find(":") + 1);
-            cmdResult = cmdResult.substr(0, cmdResult.find(","));
-            if (cmdResult.find("ms") != std::string::npos)
-            {
-                tmpIntervalSecond += 1;
-                cmdResult = cmdResult.substr(cmdResult.find("ms") + 1);
+                LSError lserror;
+                LSErrorInit(&lserror);
+                if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
+                            "luna://com.webos.service.preferences/appProperties/getAllAppProperties",
+                            "{\"appId\":\"com.webos.service.sdkagent\"}",
+                            ThreadForInterval::cb_getAllAppProperties,
+                            NULL,
+                            NULL,
+                            &lserror))
+                {
+                    LSErrorPrint(&lserror, stderr);
+                    LSErrorFree(&lserror);
+                }
             }
-            if (cmdResult.find("h") != std::string::npos)
+            else
             {
-                std::string h = cmdResult.substr(0, cmdResult.find("h"));
-                int hour = atoi(h.c_str());
-                tmpIntervalSecond += hour * 60 * 60;
-                cmdResult = cmdResult.substr(cmdResult.find("h") + 1);
-            }
-            if (cmdResult.find("m") != std::string::npos)
-            {
-                std::string m = cmdResult.substr(0, cmdResult.find("m"));
-                int minute = atoi(m.c_str());
-                tmpIntervalSecond += minute * 60;
-                cmdResult = cmdResult.substr(cmdResult.find("m") + 1);
-            }
-            if (cmdResult.find("s") != std::string::npos)
-            {
-                std::string s = cmdResult.substr(0, cmdResult.find("s"));
-                int second = atoi(s.c_str());
-                tmpIntervalSecond += second;
-            }
-            if (configIntervalSecond != tmpIntervalSecond)
-            {
-                configIntervalSecond = tmpIntervalSecond;
-                mIntervalSecCnt = 1;
+                intervalSecCnt--;
             }
         }
-        if (mIntervalSecCnt <= 1)
-            mIntervalSecCnt = configIntervalSecond;
-        else
-            mIntervalSecCnt--;
 
         g_usleep(G_USEC_PER_SEC);
     }
