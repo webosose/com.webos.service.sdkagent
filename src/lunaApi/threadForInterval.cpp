@@ -68,7 +68,7 @@ bool ThreadForInterval::cb_getAllAppProperties(LSHandle *sh, LSMessage *msg, voi
     for (int i = 0; i < response.arraySize(); i++)
     {
         pbnjson::JValue tmpValue = response[i];
-        if (tmpValue.hasKey("webProcessSize") && (tmpValue["webProcessSize"]).hasKey("enabled") && ((tmpValue["webProcessSize"])["enabled"]).asBool())
+        if (tmpValue.hasKey("webOS.webProcessSize") && (tmpValue["webOS.webProcessSize"]).hasKey("enabled") && ((tmpValue["webOS.webProcessSize"])["enabled"]).asBool())
         {
             // Test configuration
             LSError lserror;

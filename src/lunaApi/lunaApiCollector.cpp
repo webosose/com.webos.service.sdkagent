@@ -43,6 +43,9 @@ std::string availableConfiguration = "{\
     \"outputs.influxdb\": [\
         \"database\",\
         \"urls\"\
+    ],\
+    \"webOS.webProcessSize\": [\
+        \"enabled\"\
     ]\
 }";
 
@@ -236,6 +239,20 @@ bool LunaApiCollector::getStatus(LSHandle *sh, LSMessage *msg, void *data)
 
 bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
 {
+    std::string stateResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Active: active (running)\"");
+    if (!stateResult.empty()) // if telegraf is active
+    {
+        LSError lserror;
+        LSErrorInit(&lserror);
+        bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":5,\"errorText\":\"Collector is active (running).\"}", NULL);
+        if (!retVal)
+        {
+            LSErrorPrint(&lserror, stderr);
+            LSErrorFree(&lserror);
+        }
+        return false;
+    }
+
     json_object *object = json_tokener_parse(LSMessageGetPayload(msg));
     if (!object)
     {
@@ -244,6 +261,7 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
     }
 
     pbnjson::JValue paramObj = Instance()->convertStringToJson(LSMessageGetPayload(msg));
+    pbnjson::JValue webOSconfig = pbnjson::Object();
 
     // check parameter is available
     if (paramObj.objectSize() > 0)
@@ -275,6 +293,11 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
                         // paramObj[section].remove(childKey);
                     }
                 }
+                if (strncmp(section, "webOS.", 6) == 0)
+                { // divide webOS config from paramaters
+                    webOSconfig.put(section, paramObj[section]);
+                    paramObj.remove(section);
+                }
             }
             else
             {
@@ -301,10 +324,7 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
     {
         openFile.close();
         writeFile.close();
-        reply.put("returnValue", false);
-        reply.put("errorCode", 5);
-        reply.put("errorText", "Invalid configuration file : " + std::string(strerror(errno)));
-        Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
+        Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
         return false;
     }
 
@@ -314,7 +334,6 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
     {
         if (line.empty())
         {
-            writeFile.write("\n", 1);
             continue;
         }
         for (int i = 0; i < line.length(); i++)
@@ -418,13 +437,38 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
     {
         // Not change conf file
         // tmpCmd = "rm " + tmpTelegrafConfPath;
-        reply.put("returnValue", false);
-        reply.put("errorCode", 4);
-        reply.put("errorText", "Invalid configurations");
+        Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
+        return false;
     }
     else
     {
-        // Change conf file
+        // save webOS config using setAppProperty
+        json_object *tmpObj = json_tokener_parse(webOSconfig.stringify().c_str());
+        json_object_object_foreach(tmpObj, webOSkey, val)
+        {
+            pbnjson::JValue param = pbnjson::Object();
+            param.put("appId", "com.webos.service.sdkagent");
+            param.put("key", webOSkey);
+            param.put("value", webOSconfig[webOSkey].stringify().c_str());
+            LSError lserror;
+            LSErrorInit(&lserror);
+            LSMessageRef(msg);
+            if (!LSCall(Instance()->pLSHandle,
+                        "luna://com.webos.service.preferences/appProperties/setAppProperty",
+                        param.stringify().c_str(),
+                        NULL,
+                        NULL,
+                        NULL,
+                        &lserror))
+            {
+                LSErrorPrint(&lserror, stderr);
+                LSErrorFree(&lserror);
+                Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
+                return false;
+            }
+        }
+
+        // Save telegraf config to telegraf.conf
         tmpCmd = "mv " + tmpTelegrafConfPath + " " + telegrafConfPath;
         reply.put("returnValue", true);
     }
@@ -435,25 +479,15 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
     return true;
 }
 
-bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
+bool getTelegrafConfig(pbnjson::JValue reply)
 {
-    json_object *object = json_tokener_parse(LSMessageGetPayload(msg));
-    if (!object)
-    {
-        Instance()->LSMessageReplyErrorBadJSON(sh, msg);
-        return false;
-    }
-
-    pbnjson::JValue reply = pbnjson::Object();
-
     std::ifstream openFile("/etc/telegraf/telegraf.conf");
     if (!openFile || (openFile.fail()))
     {
         openFile.close();
         reply.put("returnValue", false);
-        reply.put("errorCode", 5);
-        reply.put("errorText", "Invalid configuration file : " + std::string(strerror(errno)));
-        Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
+        reply.put("errorCode", 4);
+        reply.put("errorText", "Invalid configurations : " + std::string(strerror(errno)));
         return false;
     }
 
@@ -505,7 +539,7 @@ bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
                 int firstColonIndex = line.find(":");
                 std::string key = line.substr(0, firstColonIndex);
                 std::string value = line.substr(firstColonIndex + 1, line.length());
-                pbnjson::JValue tmpObj = Instance()->convertStringToJson(std::string("{\"" + trim(key) + "\":" + trim(value) + "}").c_str());
+                pbnjson::JValue tmpObj = LunaApiCollector::Instance()->convertStringToJson(std::string("{\"" + trim(key) + "\":" + trim(value) + "}").c_str());
                 replyConfig[section].put(key, tmpObj[key]);
                 break;
             }
@@ -515,7 +549,64 @@ bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
 
     reply.put("returnValue", true);
     reply.put("config", replyConfig);
-    Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
+    return true;
+}
+
+bool LunaApiCollector::cb_getwebOSconfig(LSHandle *sh, LSMessage *msg, void *user_data)
+{
+    pbnjson::JValue reply = pbnjson::Object();
+    if (getTelegrafConfig(reply))
+    {
+        pbnjson::JValue webOSconfigs = Instance()->convertStringToJson(LSMessageGetPayload(msg));
+        for (int i = 0; i < webOSconfigs.arraySize(); i++)
+        {
+            json_object *tmpObj = json_tokener_parse(webOSconfigs[i].stringify().c_str());
+            json_object_object_foreach(tmpObj, tmpKey, tmpValue)
+            {
+                if (strncmp(tmpKey, "webOS.", 6) == 0)
+                {
+                    json_object *keyObj;
+                    if (json_object_object_get_ex(Instance()->availableConfigurationJson, tmpKey, &keyObj))
+                    {
+                        reply["config"].put(tmpKey, webOSconfigs[i][tmpKey]);
+                    }
+                }
+            }
+        }
+    }
+
+    Instance()->LSMessageReplyPayload(sh, (LSMessage *)user_data, (char *)(reply.stringify().c_str()));
+
+    return true;
+}
+
+bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
+{
+    json_object *object = json_tokener_parse(LSMessageGetPayload(msg));
+    if (!object)
+    {
+        Instance()->LSMessageReplyErrorBadJSON(sh, msg);
+        return false;
+    }
+
+    LSError lserror;
+    LSErrorInit(&lserror);
+    LSMessageRef(msg);
+    if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
+                "luna://com.webos.service.preferences/appProperties/getAllAppProperties",
+                "{\"appId\":\"com.webos.service.sdkagent\"}",
+                LunaApiCollector::cb_getwebOSconfig,
+                (void *)msg,
+                NULL,
+                &lserror))
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+
+        pbnjson::JValue reply = pbnjson::Object();
+        getTelegrafConfig(reply);
+        Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
+    }
 
     return true;
 }
@@ -591,10 +682,7 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
     std::string cmdResult = Instance()->executeCommand(tmpCmd);
     if (cmdResult.find("E! [telegraf] Error") != std::string::npos)
     {
-        reply.put("returnValue", false);
-        reply.put("errorCode", 4);
-        reply.put("errorText", "Invalid configurations");
-        Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
+        Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
         return false;
     }
     pbnjson::JValue dataArray = pbnjson::Array();

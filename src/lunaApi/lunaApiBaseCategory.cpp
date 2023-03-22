@@ -45,6 +45,21 @@ bool LunaApiBaseCategory::initLunaServiceCategory(LSHandle *lsHandle)
     return true;
 }
 
+void LunaApiBaseCategory::LSMessageReplyErrorInvalidConfigurations(LSHandle *sh, LSMessage *msg)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":4,\"errorText\":\"Invalid configurations.\"}", NULL);
+    if (!retVal)
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+    }
+
+    return;
+}
+
 void LunaApiBaseCategory::LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg)
 {
     LSError lserror;
