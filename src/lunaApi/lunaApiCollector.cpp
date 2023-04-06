@@ -487,7 +487,7 @@ bool getTelegrafConfig(pbnjson::JValue reply)
         openFile.close();
         reply.put("returnValue", false);
         reply.put("errorCode", 4);
-        reply.put("errorText", "Invalid configurations : " + std::string(strerror(errno)));
+        reply.put("errorText", "Invalid configurations.");
         return false;
     }
 
