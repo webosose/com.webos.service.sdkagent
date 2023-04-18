@@ -1,6 +1,5 @@
 {
     "com.webos.service.sdkagent":[
-        "preferences.application",
         "webapplication.management"
     ]
 }

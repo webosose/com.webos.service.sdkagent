@@ -19,6 +19,8 @@
 
 #include <luna-service2/lunaservice.h>
 #include <pbnjson.hpp>
+#include <fstream>
+#include <mutex>
 
 class LunaApiBaseCategory
 {
@@ -28,6 +30,8 @@ public:
     bool initLunaServiceCategory(LSHandle *);
     std::string executeCommand(std::string);
     pbnjson::JValue convertStringToJson(const char *rawData);
+    pbnjson::JValue readwebOSConfigJson();
+    bool writewebOSConfigJson(pbnjson::JValue);
 
     LSHandle *pLSHandle;
 

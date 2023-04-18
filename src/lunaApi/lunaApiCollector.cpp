@@ -136,20 +136,6 @@ bool LunaApiCollector::restart(LSHandle *sh, LSMessage *msg, void *data)
     return true;
 }
 
-bool LunaApiCollector::cbStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data)
-{
-    pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
-    if (!response["returnValue"].asBool())
-    {
-        Instance()->LSMessageReplyErrorUnknown(sh, (LSMessage *)user_data);
-        return false;
-    }
-
-    Instance()->LSMessageReplyPayload(sh, (LSMessage *)user_data, NULL);
-
-    return true;
-}
-
 bool LunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data)
 {
     json_object *object = json_tokener_parse(LSMessageGetPayload(msg));
@@ -166,44 +152,16 @@ bool LunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    pbnjson::JValue param = pbnjson::Object();
-    param.put("appId", "com.webos.service.sdkagent");
-    param.put("key", "startOnBoot");
-    pbnjson::JValue value = pbnjson::Object();
-    value.put("enabled", paramObj["enable"].asBool());
-    param.put("value", value);
-
-    LSError lserror;
-    LSErrorInit(&lserror);
-    LSMessageRef(msg);
-    if (!LSCall(Instance()->pLSHandle,
-                "luna://com.webos.service.preferences/appProperties/setAppProperty",
-                param.stringify().c_str(),
-                LunaApiCollector::cbStartOnBoot,
-                (void *)msg,
-                NULL,
-                &lserror))
+    bool isEnable = paramObj["enable"].asBool();
+    if (isEnable)
     {
-        LSErrorPrint(&lserror, stderr);
-        LSErrorFree(&lserror);
-        Instance()->LSMessageReplyErrorUnknown(sh, msg);
-        return false;
+        Instance()->executeCommand("touch /var/lib/com.webos.service.sdkagent/startOnBoot");
     }
-
-    return true;
-}
-
-bool LunaApiCollector::cbGetStatus(LSHandle *sh, LSMessage *msg, void *user_data)
-{
-    pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
-    bool isStartOnBoot = (response["startOnBoot"])["enabled"].asBool();
-
-    pbnjson::JValue reply = pbnjson::Object();
-    reply.put("returnValue", true);
-    reply.put("status", Instance()->executeCommand("systemctl is-active telegraf"));
-    reply.put("startOnBoot", isStartOnBoot);
-
-    Instance()->LSMessageReplyPayload(sh, (LSMessage *)user_data, (char *)(reply.stringify().c_str()));
+    else
+    {
+        Instance()->executeCommand("rm /var/lib/com.webos.service.sdkagent/startOnBoot");
+    }
+    Instance()->LSMessageReplyPayload(sh, msg, NULL);
 
     return true;
 }
@@ -217,22 +175,14 @@ bool LunaApiCollector::getStatus(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    LSError lserror;
-    LSErrorInit(&lserror);
-    LSMessageRef(msg);
-    if (!LSCall(Instance()->pLSHandle,
-                "luna://com.webos.service.preferences/appProperties/getAppProperty",
-                "{\"appId\":\"com.webos.service.sdkagent\", \"key\":\"startOnBoot\"}",
-                LunaApiCollector::cbGetStatus,
-                (void *)msg,
-                NULL,
-                &lserror))
-    {
-        LSErrorPrint(&lserror, stderr);
-        LSErrorFree(&lserror);
-        Instance()->LSMessageReplyErrorUnknown(sh, msg);
-        return false;
-    }
+    pbnjson::JValue reply = pbnjson::Object();
+    reply.put("returnValue", true);
+    reply.put("status", Instance()->executeCommand("systemctl is-active telegraf"));
+    std::ifstream startOnBoot("/var/lib/com.webos.service.sdkagent/startOnBoot");
+    reply.put("startOnBoot", startOnBoot.good());
+    startOnBoot.close();
+
+    Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
 
     return true;
 }
@@ -442,31 +392,15 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
     }
     else
     {
+        pbnjson::JValue webOSConfigJson = LunaApiCollector::Instance()->readwebOSConfigJson();
         // save webOS config using setAppProperty
         json_object *tmpObj = json_tokener_parse(webOSconfig.stringify().c_str());
         json_object_object_foreach(tmpObj, webOSkey, val)
         {
-            pbnjson::JValue param = pbnjson::Object();
-            param.put("appId", "com.webos.service.sdkagent");
-            param.put("key", webOSkey);
-            param.put("value", webOSconfig[webOSkey].stringify().c_str());
-            LSError lserror;
-            LSErrorInit(&lserror);
-            LSMessageRef(msg);
-            if (!LSCall(Instance()->pLSHandle,
-                        "luna://com.webos.service.preferences/appProperties/setAppProperty",
-                        param.stringify().c_str(),
-                        NULL,
-                        NULL,
-                        NULL,
-                        &lserror))
-            {
-                LSErrorPrint(&lserror, stderr);
-                LSErrorFree(&lserror);
-                Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
-                return false;
-            }
+            webOSConfigJson.put(webOSkey, webOSconfig[webOSkey]);
         }
+
+        LunaApiCollector::Instance()->writewebOSConfigJson(webOSConfigJson);
 
         // Save telegraf config to telegraf.conf
         tmpCmd = "mv " + tmpTelegrafConfPath + " " + telegrafConfPath;
@@ -479,8 +413,9 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
     return true;
 }
 
-bool getTelegrafConfig(pbnjson::JValue reply)
+pbnjson::JValue getTelegrafConfig()
 {
+    pbnjson::JValue reply = pbnjson::Object();
     std::ifstream openFile("/etc/telegraf/telegraf.conf");
     if (!openFile || (openFile.fail()))
     {
@@ -488,7 +423,7 @@ bool getTelegrafConfig(pbnjson::JValue reply)
         reply.put("returnValue", false);
         reply.put("errorCode", 4);
         reply.put("errorText", "Invalid configurations.");
-        return false;
+        return reply;
     }
 
     pbnjson::JValue replyConfig = pbnjson::Object();
@@ -549,35 +484,7 @@ bool getTelegrafConfig(pbnjson::JValue reply)
 
     reply.put("returnValue", true);
     reply.put("config", replyConfig);
-    return true;
-}
-
-bool LunaApiCollector::cb_getwebOSconfig(LSHandle *sh, LSMessage *msg, void *user_data)
-{
-    pbnjson::JValue reply = pbnjson::Object();
-    if (getTelegrafConfig(reply))
-    {
-        pbnjson::JValue webOSconfigs = Instance()->convertStringToJson(LSMessageGetPayload(msg));
-        for (int i = 0; i < webOSconfigs.arraySize(); i++)
-        {
-            json_object *tmpObj = json_tokener_parse(webOSconfigs[i].stringify().c_str());
-            json_object_object_foreach(tmpObj, tmpKey, tmpValue)
-            {
-                if (strncmp(tmpKey, "webOS.", 6) == 0)
-                {
-                    json_object *keyObj;
-                    if (json_object_object_get_ex(Instance()->availableConfigurationJson, tmpKey, &keyObj))
-                    {
-                        reply["config"].put(tmpKey, webOSconfigs[i][tmpKey]);
-                    }
-                }
-            }
-        }
-    }
-
-    Instance()->LSMessageReplyPayload(sh, (LSMessage *)user_data, (char *)(reply.stringify().c_str()));
-
-    return true;
+    return reply;
 }
 
 bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
@@ -589,25 +496,17 @@ bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    LSError lserror;
-    LSErrorInit(&lserror);
-    LSMessageRef(msg);
-    if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
-                "luna://com.webos.service.preferences/appProperties/getAllAppProperties",
-                "{\"appId\":\"com.webos.service.sdkagent\"}",
-                LunaApiCollector::cb_getwebOSconfig,
-                (void *)msg,
-                NULL,
-                &lserror))
+    pbnjson::JValue reply = getTelegrafConfig();
+    if (reply["returnValue"] != false)
     {
-        LSErrorPrint(&lserror, stderr);
-        LSErrorFree(&lserror);
-
-        pbnjson::JValue reply = pbnjson::Object();
-        getTelegrafConfig(reply);
-        Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
+        pbnjson::JValue webOSConfig = LunaApiCollector::Instance()->readwebOSConfigJson();
+        json_object *rootObj = json_tokener_parse(webOSConfig.stringify().c_str());
+        json_object_object_foreach(rootObj, childKey, childVal)
+        {
+            reply["config"].put(childKey, webOSConfig[childKey]);
+        }
     }
-
+    Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
     return true;
 }
 
@@ -730,60 +629,15 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
     return true;
 }
 
-bool LunaApiCollector::cbInitStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data)
-{
-    pbnjson::JValue response = Instance()->convertStringToJson(LSMessageGetPayload(msg));
-    if (response["returnValue"].asBool())
-    {
-        if ((response["startOnBoot"])["enabled"].asBool())
-        {
-            Instance()->executeCommand("systemctl start telegraf");
-        }
-    }
-    else
-    {
-        pbnjson::JValue param = pbnjson::Object();
-        param.put("appId", "com.webos.service.sdkagent");
-        param.put("key", "startOnBoot");
-        pbnjson::JValue value = pbnjson::Object();
-        value.put("enabled", false);
-        param.put("value", value);
-        LSError lserror;
-        LSErrorInit(&lserror);
-        LSMessageRef(msg);
-        if (!LSCall(Instance()->pLSHandle,
-                    "luna://com.webos.service.preferences/appProperties/setAppProperty",
-                    param.stringify().c_str(),
-                    NULL,
-                    NULL,
-                    NULL,
-                    &lserror))
-        {
-            LSErrorPrint(&lserror, stderr);
-            LSErrorFree(&lserror);
-            Instance()->LSMessageReplyErrorUnknown(sh, msg);
-            return false;
-        }
-    }
-
-    return true;
-}
-
 void LunaApiCollector::initialize()
 {
-    LSError lserror;
-    LSErrorInit(&lserror);
-    if (!LSCall(Instance()->pLSHandle,
-                "luna://com.webos.service.preferences/appProperties/getAppProperty",
-                "{\"appId\":\"com.webos.service.sdkagent\", \"key\":\"startOnBoot\"}",
-                LunaApiCollector::cbInitStartOnBoot,
-                NULL,
-                NULL,
-                &lserror))
+    Instance()->executeCommand("mkdir -p /var/lib/com.webos.service.sdkagent");
+    std::ifstream startOnBoot("/var/lib/com.webos.service.sdkagent/startOnBoot");
+    if (startOnBoot.good())
     {
-        LSErrorPrint(&lserror, stderr);
-        LSErrorFree(&lserror);
+        Instance()->executeCommand("systemctl start telegraf");
     }
+    startOnBoot.close();
 }
 
 void LunaApiCollector::postEvent(void *subscribeKey, void *payload)

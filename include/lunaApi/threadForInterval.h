@@ -46,7 +46,6 @@ private:
 
     static gpointer intervalHandle_process(gpointer data);
 
-    static bool cb_getAllAppProperties(LSHandle *sh, LSMessage *msg, void *user_data);
     static bool cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void *user_data);
 };
 

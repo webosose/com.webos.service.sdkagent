@@ -75,12 +75,6 @@ private:
     static bool getData(LSHandle *sh, LSMessage *msg, void *data);
 
     static void postEvent(void *subscribeKey, void *payload);
-
-    static bool cbInitStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data);
-    static bool cbStartOnBoot(LSHandle *sh, LSMessage *msg, void *user_data);
-    static bool cbGetStatus(LSHandle *sh, LSMessage *msg, void *user_data);
-
-    static bool cb_getwebOSconfig(LSHandle *sh, LSMessage *msg, void *user_data);
 };
 
 #endif

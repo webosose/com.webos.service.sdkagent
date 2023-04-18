@@ -17,6 +17,8 @@
 #include "logging.h"
 #include "lunaApiBaseCategory.h"
 
+#define WEBOS_CONFIG_JSON "/var/lib/com.webos.service.sdkagent/config.json"
+
 LunaApiBaseCategory::LunaApiBaseCategory() : pLSHandle(NULL),
                                              pCategory(NULL),
                                              pMethods(NULL)
@@ -191,4 +193,43 @@ pbnjson::JValue LunaApiBaseCategory::convertStringToJson(const char *rawData)
         return pbnjson::JValue();
     }
     return parser.getDom();
+}
+
+std::mutex webOSConfigMutex;
+
+pbnjson::JValue LunaApiBaseCategory::readwebOSConfigJson()
+{
+    webOSConfigMutex.lock();
+    std::ifstream configFile(WEBOS_CONFIG_JSON);
+    std::string readAllData;
+    std::string readline;
+    if (configFile.good())
+    {
+        while (getline(configFile, readline))
+        {
+            readAllData += readline;
+        }
+        configFile.close();
+    }
+    else
+    {
+        configFile.close();
+        std::string cmd = "echo \"{}\" > ";
+        cmd = cmd.append(WEBOS_CONFIG_JSON);
+        executeCommand(cmd);
+        readAllData = "{}";
+    }
+    webOSConfigMutex.unlock();
+    return convertStringToJson((char *)(readAllData.c_str()));
+}
+
+bool LunaApiBaseCategory::writewebOSConfigJson(pbnjson::JValue webOSConfigJson)
+{
+    webOSConfigMutex.lock();
+    std::ofstream fileOut;
+    fileOut.open(WEBOS_CONFIG_JSON);
+    fileOut.write(webOSConfigJson.stringify().c_str(), webOSConfigJson.stringify().size()); // Need Styled Writer?
+    fileOut.close();
+    webOSConfigMutex.unlock();
+    return true;
 }

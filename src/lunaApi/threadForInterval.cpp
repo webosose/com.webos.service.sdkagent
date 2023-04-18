@@ -62,33 +62,6 @@ bool ThreadForInterval::cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void 
     return true;
 }
 
-bool ThreadForInterval::cb_getAllAppProperties(LSHandle *sh, LSMessage *msg, void *user_data)
-{
-    pbnjson::JValue response = LunaApiCollector::Instance()->convertStringToJson(LSMessageGetPayload(msg));
-    for (int i = 0; i < response.arraySize(); i++)
-    {
-        pbnjson::JValue tmpValue = response[i];
-        if (tmpValue.hasKey("webOS.webProcessSize") && (tmpValue["webOS.webProcessSize"]).hasKey("enabled") && ((tmpValue["webOS.webProcessSize"])["enabled"]).asBool())
-        {
-            // Test configuration
-            LSError lserror;
-            LSErrorInit(&lserror);
-            if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
-                        "luna://com.webos.service.webappmanager/getWebProcessSize",
-                        "{}",
-                        ThreadForInterval::cb_getWebProcessSize,
-                        NULL,
-                        NULL,
-                        &lserror))
-            {
-                LSErrorPrint(&lserror, stderr);
-                LSErrorFree(&lserror);
-            }
-        }
-    }
-    return true;
-}
-
 gpointer ThreadForInterval::intervalHandle_process(gpointer data)
 {
     IntervalHandle *intervalHandle = (IntervalHandle *)data;
@@ -159,18 +132,22 @@ gpointer ThreadForInterval::intervalHandle_process(gpointer data)
             {
                 intervalSecCnt = configIntervalSecond;
 
-                LSError lserror;
-                LSErrorInit(&lserror);
-                if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
-                            "luna://com.webos.service.preferences/appProperties/getAllAppProperties",
-                            "{\"appId\":\"com.webos.service.sdkagent\"}",
-                            ThreadForInterval::cb_getAllAppProperties,
-                            NULL,
-                            NULL,
-                            &lserror))
+                pbnjson::JValue tmpValue = LunaApiCollector::Instance()->readwebOSConfigJson();
+                if (tmpValue.hasKey("webOS.webProcessSize") && (tmpValue["webOS.webProcessSize"]).hasKey("enabled") && ((tmpValue["webOS.webProcessSize"])["enabled"]).asBool())
                 {
-                    LSErrorPrint(&lserror, stderr);
-                    LSErrorFree(&lserror);
+                    LSError lserror;
+                    LSErrorInit(&lserror);
+                    if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
+                                "luna://com.webos.service.webappmanager/getWebProcessSize",
+                                "{}",
+                                ThreadForInterval::cb_getWebProcessSize,
+                                NULL,
+                                NULL,
+                                &lserror))
+                    {
+                        LSErrorPrint(&lserror, stderr);
+                        LSErrorFree(&lserror);
+                    }
                 }
             }
             else
