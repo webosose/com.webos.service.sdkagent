@@ -1,6 +1,6 @@
 {
-    "com.webos.service.sdkagent":[
-        "webapplication.management"
+    "com.webos.service.sdkagent": [
+        "webapplication.management",
+        "application.launcher"
     ]
 }
-

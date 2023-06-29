@@ -46,6 +46,10 @@ std::string availableConfiguration = "{\
     ],\
     \"webOS.webProcessSize\": [\
         \"enabled\"\
+        ],\
+    \"webOS.processMonitoring\": [\
+        \"process_name\",\
+        \"enabled\"\
     ]\
 }";
 
@@ -185,6 +189,69 @@ bool LunaApiCollector::getStatus(LSHandle *sh, LSMessage *msg, void *data)
     Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
 
     return true;
+}
+
+// if need process filtering except intput process name
+bool checkProcessName(std::string processName)
+{
+    std::string pid = LunaApiCollector::Instance()->executeCommand("pgrep -f " + processName, true);
+    return !pid.empty();
+    // if (pid.empty())
+    // {
+    //     return false;
+    // }
+    // int startIndex = (pid.find_last_of(" ") == std::string::npos) ? 0 : pid.find_last_of(" ");
+    // pid = pid.replace(startIndex, pid.length() - startIndex, "");
+    // if (pid.find_last_of(" ") != std::string::npos)
+    // {
+    //     return false;
+    // }
+    // try
+    // {
+    //     int conv = std::stoi(pid);
+    //     return true;
+    // }
+    // catch (const std::exception &expn)
+    // {
+    //     return false;
+    // }
+    // catch (...)
+    // {
+    //     return false;
+    // }
+}
+
+void processProcstat(pbnjson::JValue tmpConfigJson)
+{ // for /etc/telegraf/telegraf.d/procstat.conf
+    if (tmpConfigJson.hasKey("webOS.processMonitoring") &&
+        (tmpConfigJson["webOS.processMonitoring"]).hasKey("enabled") &&
+        ((tmpConfigJson["webOS.processMonitoring"])["enabled"]).asBool())
+    {
+        std::string processList = "";
+        pbnjson::JValue process_name = (tmpConfigJson["webOS.processMonitoring"])["process_name"];
+        if (process_name.isArray())
+        {
+            for (int i = 0; i < process_name.arraySize(); i++)
+            {
+                if (checkProcessName(process_name[i].asString()))
+                {
+                    processList += process_name[i].asString() + "|";
+                }
+            }
+            if ((!processList.empty()) && (processList.at(processList.length() - 1) == '|'))
+            {
+                processList.pop_back();
+            }
+
+            if (processList.length() > 0)
+            {
+                std::string procstatCmd = "echo -e '[[inputs.procstat]]\npid_tag=true\npattern=\"" + processList + "\"' > /etc/telegraf/telegraf.d/procstat.conf";
+                LunaApiCollector::Instance()->executeCommand(procstatCmd);
+                return;
+            }
+        }
+    }
+    LunaApiCollector::Instance()->executeCommand("rm -fr /etc/telegraf/telegraf.d/procstat.conf");
 }
 
 bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
@@ -393,13 +460,12 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
     else
     {
         pbnjson::JValue webOSConfigJson = LunaApiCollector::Instance()->readwebOSConfigJson();
-        // save webOS config using setAppProperty
         json_object *tmpObj = json_tokener_parse(webOSconfig.stringify().c_str());
         json_object_object_foreach(tmpObj, webOSkey, val)
         {
             webOSConfigJson.put(webOSkey, webOSconfig[webOSkey]);
         }
-
+        processProcstat(webOSConfigJson);
         LunaApiCollector::Instance()->writewebOSConfigJson(webOSConfigJson);
 
         // Save telegraf config to telegraf.conf

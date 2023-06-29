@@ -1,5 +1,5 @@
 {
-    "sdkagent.collector":[
+    "sdkagent.collector": [
         "com.webos.service.sdkagent/collector/start",
         "com.webos.service.sdkagent/collector/stop",
         "com.webos.service.sdkagent/collector/restart",
@@ -10,4 +10,3 @@
         "com.webos.service.sdkagent/collector/getData"
     ]
 }
-

@@ -2,5 +2,7 @@
     "allowedNames": [
         "com.webos.service.sdkagent"
     ],
-    "sdkagent.collector": ["dev"]
+    "sdkagent.collector": [
+        "dev"
+    ]
 }

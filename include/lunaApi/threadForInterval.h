@@ -20,6 +20,7 @@
 #include <glib.h>
 #include <luna-service2/lunaservice.h>
 #include <pbnjson.hpp>
+#include <iomanip>
 
 enum
 {
@@ -47,6 +48,7 @@ private:
     static gpointer intervalHandle_process(gpointer data);
 
     static bool cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void *user_data);
+    static bool cb_getRunningProcess(LSHandle *sh, LSMessage *msg, void *user_data);
 };
 
 #endif

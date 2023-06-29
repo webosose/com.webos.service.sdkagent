@@ -18,6 +18,9 @@
 #include "lunaApiCollector.h"
 #include "threadForInterval.h"
 
+#include <map>
+#include <iomanip>
+
 ThreadForInterval::ThreadForInterval()
 {
     IntervalHandle *intervalHandle = g_new(IntervalHandle, 1);
@@ -46,6 +49,7 @@ bool ThreadForInterval::cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void 
     pbnjson::JValue webProcesses = response["WebProcesses"];
     for (int i = 0; i < webProcesses.arraySize(); i++)
     {
+        std::string pid = webProcesses[i]["pid"].asString();
         std::string webProcessSize = webProcesses[i]["webProcessSize"].asString();
         webProcessSize.erase(webProcessSize.size() - 2);
         pbnjson::JValue runningApps = webProcesses[i]["runningApps"];
@@ -54,10 +58,208 @@ bool ThreadForInterval::cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void 
             pbnjson::JValue app = runningApps[j];
             std::string processId = app["id"].asString();
             std::string sendData = std::string("webProcessSize,webId=");
-            sendData += processId + " webSize=" + webProcessSize;
+            sendData += processId + ",pid=" + pid + " webProcessSize=" + webProcessSize;
             LunaApiCollector::Instance()->sendToTelegraf(sendData);
         }
     }
+
+    return true;
+}
+
+float stringToFloat(std::string str)
+{
+    if (str.empty())
+        return 0.0f;
+    try
+    {
+        return std::stof(str);
+    }
+    catch (const std::exception &expn)
+    {
+        return 0.0f;
+    }
+    catch (...)
+    {
+        return 0.0f;
+    }
+}
+
+int stringToPositiveInt(std::string str)
+{
+    if (str.empty())
+        return -1;
+    try
+    {
+        return std::stoi(str);
+    }
+    catch (const std::exception &expn)
+    {
+        return -1;
+    }
+    catch (...)
+    {
+        return -1;
+    }
+}
+
+int configIntervalSecond = 0;
+
+std::map<int, float> old_process_time_map;
+std::string interval_cpu_usage(std::string pid)
+{
+    // calculate cpu usage from interval seconds
+    std::string cmd = "sed -E 's/\\([^)]+\\)/X/' \"/proc/" + pid + "/stat\" | awk '{print $14}'";
+    std::string process_utime_str = LunaApiCollector::Instance()->executeCommand(cmd);
+    cmd = "sed -E 's/\\([^)]+\\)/X/' \"/proc/" + pid + "/stat\" | awk '{print $15}'";
+    std::string process_stime_str = LunaApiCollector::Instance()->executeCommand(cmd);
+    float process_time = stringToFloat(process_utime_str) + stringToFloat(process_stime_str);
+
+    int int_pid = stringToPositiveInt(pid);
+    std::map<int, float>::iterator iter;
+    iter = old_process_time_map.find(int_pid);
+    if (iter == old_process_time_map.end())
+    {
+        old_process_time_map[int_pid] = process_time;
+        return "0";
+    }
+
+    float tmp_old_process_time = old_process_time_map[int_pid];
+    float elapsed = process_time - tmp_old_process_time;
+    old_process_time_map[int_pid] = process_time;
+    elapsed = elapsed / (float)configIntervalSecond;
+
+    std::stringstream cpu_usage_stream;
+    cpu_usage_stream << std::fixed << std::setprecision(2) << elapsed;
+    return cpu_usage_stream.str();
+}
+
+std::string exceptionProcesses[3] = {"telegraf"};
+void calculateProcessMonitoring(std::string processName, std::string pid)
+{
+    if (pid.empty() || (stringToPositiveInt(pid) < 0))
+        return;
+
+    for (int i = 0; i < 3; i++)
+    {
+        if (processName.find(exceptionProcesses[i]) != std::string::npos)
+        {
+            return;
+        }
+    }
+    std::string sendData = std::string("processMonitoring");
+    sendData += ",processName=" + processName + ",pid=" + pid + " ";
+
+    sendData += "interval_cpu_usage=" + interval_cpu_usage(pid);
+
+    // calculate memory (kB)
+    // VSZ (Virtual Memory Size) (kB)
+    std::string cmd = "cat /proc/" + pid + "/stat | cut -d\" \" -f23 | xargs -n 1 bash -c 'echo $(($1/1024))' args";
+    std::string VSZ = LunaApiCollector::Instance()->executeCommand(cmd);
+    sendData += ",VSZ=" + VSZ;
+    // VmRSS = RssAnon + RssFile + RssSHmem (kB)
+    cmd = "cat /proc/" + pid + "/status | grep '^VmRSS:' | awk '{print $2}'";
+    std::string vmRSS = LunaApiCollector::Instance()->executeCommand(cmd);
+    sendData += ",vmRSS=" + vmRSS;
+    // RSS (Resident Set Size) (kB)
+    cmd = "grep -e '^Rss' /proc/" + pid + "/smaps | awk '{sum += $2} END {print sum}'";
+    std::string smaps_RSS = LunaApiCollector::Instance()->executeCommand(cmd);
+    sendData += ",smaps_RSS=" + smaps_RSS;
+    // PSS (Proportional Set Size) (kB)
+    cmd = "grep -e '^Pss' /proc/" + pid + "/smaps | awk '{sum += $2} END {print sum}'";
+    std::string smaps_PSS = LunaApiCollector::Instance()->executeCommand(cmd);
+    sendData += ",smaps_PSS=" + smaps_PSS;
+    // USS (Unique Set Size) = Private_Clean + Private_Dirty (kB)
+    cmd = "grep -e '^Private' /proc/" + pid + "/smaps | awk '{sum += $2} END {print sum}'";
+    std::string smaps_USS = LunaApiCollector::Instance()->executeCommand(cmd);
+    sendData += ",smaps_USS=" + smaps_USS;
+    // SDK_LOG_INFO(MSGID_SDKAGENT, 0, "sendData : %s", sendData.c_str());
+    LunaApiCollector::Instance()->sendToTelegraf(sendData);
+}
+
+void monitoringAllProcesses(pbnjson::JValue runningWebProcesses)
+{
+    // SDK_LOG_INFO(MSGID_SDKAGENT, 0, "monitoringAllProcesses : %s", runningWebProcesses.stringify().c_str());
+    char targetProcessName[256];
+    DIR *pDir = opendir("/proc/"); // Open /proc/ directory
+    struct dirent *pDirEntry;
+    while (NULL != (pDirEntry = readdir(pDir)))
+    { // Reading /proc/ entries
+        if (strspn(pDirEntry->d_name, "0123456789") == strlen(pDirEntry->d_name))
+        { // Checking for numbered directories
+            std::string exeLink = "/proc/" + std::string(pDirEntry->d_name) + "/exe";
+            int targetResult = readlink(exeLink.c_str(), targetProcessName, sizeof(targetProcessName) - 1);
+            if (targetResult > 0)
+            {
+                targetProcessName[targetResult] = 0;
+                std::string targetProcessNameStr(targetProcessName);
+                if (targetProcessNameStr.find("WebAppMgr") != std::string::npos)
+                { // Not Need???
+                    for (int i = 0; i < runningWebProcesses.arraySize(); i++)
+                    {
+                        pbnjson::JValue webProcess = runningWebProcesses[i];
+                        std::string pid = webProcess["webprocessid"].asString();
+                        if (strcmp(pid.c_str(), pDirEntry->d_name) == 0)
+                        {
+                            std::string webProcessName = webProcess["id"].asString();
+                            targetProcessNameStr = webProcessName;
+                            break;
+                        }
+                    }
+                }
+                calculateProcessMonitoring(targetProcessNameStr, std::string(pDirEntry->d_name));
+            }
+        }
+    }
+    closedir(pDir);
+}
+
+bool ThreadForInterval::cb_getRunningProcess(LSHandle *sh, LSMessage *msg, void *user_data)
+{
+    pbnjson::JValue response = LunaApiCollector::Instance()->convertStringToJson(LSMessageGetPayload(msg));
+    if (!response["returnValue"].asBool())
+    {
+        SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "%s returnValue is false [%d:%s]\n", __FUNCTION__, errno, strerror(errno));
+        return false;
+    }
+    pbnjson::JValue userDataJValue = LunaApiCollector::Instance()->convertStringToJson((char *)user_data);
+    pbnjson::JValue process_name = userDataJValue["process_name"];
+    if (!process_name.isArray())
+    {
+        return false;
+    }
+    if ((process_name.arraySize() == 1) && (process_name[0].asString().compare(".") == 0))
+    {
+        monitoringAllProcesses(response["running"]);
+    }
+    else
+    {
+        pbnjson::JValue runningWebProcessArray = response["running"];
+        for (int i = 0; i < runningWebProcessArray.arraySize(); i++)
+        {
+            pbnjson::JValue webProcess = runningWebProcessArray[i];
+            std::string webProcessName = webProcess["id"].asString();
+            for (int j = 0; j < process_name.arraySize(); j++)
+            {
+                std::string processNameStr = process_name[j].asString();
+                if (processNameStr.compare(webProcessName) == 0)
+                {
+                    std::string pid = webProcess["webprocessid"].asString();
+                    process_name.remove(j);
+                    calculateProcessMonitoring(webProcessName, pid);
+                    break;
+                }
+            }
+        }
+        for (int i = 0; i < process_name.arraySize(); i++)
+        {
+            std::string processNameStr = process_name[i].asString();
+            std::string cmd = "ps -fC " + processNameStr + " | grep " + processNameStr + " | awk '{print $2}'";
+            std::string pid = LunaApiCollector::Instance()->executeCommand(cmd);
+            calculateProcessMonitoring(processNameStr, pid);
+        }
+    }
+
+    free((char *)user_data);
 
     return true;
 }
@@ -66,7 +268,6 @@ gpointer ThreadForInterval::intervalHandle_process(gpointer data)
 {
     IntervalHandle *intervalHandle = (IntervalHandle *)data;
     int intervalSecCnt = 1;
-    int configIntervalSecond = 0;
     while (intervalHandle != NULL)
     {
         gpointer msg = g_async_queue_try_pop(intervalHandle->queue);
@@ -142,6 +343,25 @@ gpointer ThreadForInterval::intervalHandle_process(gpointer data)
                                 "{}",
                                 ThreadForInterval::cb_getWebProcessSize,
                                 NULL,
+                                NULL,
+                                &lserror))
+                    {
+                        LSErrorPrint(&lserror, stderr);
+                        LSErrorFree(&lserror);
+                    }
+                }
+
+                if (tmpValue.hasKey("webOS.processMonitoring") && (tmpValue["webOS.processMonitoring"]).hasKey("enabled") && ((tmpValue["webOS.processMonitoring"])["enabled"]).asBool())
+                {
+                    pbnjson::JValue processMonitoringJValue = tmpValue["webOS.processMonitoring"];
+                    LSError lserror;
+                    LSErrorInit(&lserror);
+                    const char *ctx = strdup(processMonitoringJValue.stringify().c_str());
+                    if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
+                                "luna://com.webos.applicationManager/running",
+                                "{}",
+                                ThreadForInterval::cb_getRunningProcess,
+                                (void *)ctx,
                                 NULL,
                                 &lserror))
                     {

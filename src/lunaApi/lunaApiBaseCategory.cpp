@@ -153,7 +153,7 @@ void LunaApiBaseCategory::postEvent(LSHandle *handle, void *subscribeKey, void *
     return;
 }
 
-std::string LunaApiBaseCategory::executeCommand(std::string pszCommand)
+std::string LunaApiBaseCategory::executeCommand(std::string pszCommand, bool linefeedToSpace = false)
 {
     FILE *fp = popen(pszCommand.c_str(), "r");
     if (!fp)
@@ -175,8 +175,16 @@ std::string LunaApiBaseCategory::executeCommand(std::string pszCommand)
         retStr = retStr.append(ln);
         if (retStr.at(retStr.length() - 1) == '\n')
         {
-            retStr = retStr.erase(retStr.length() - 1, 1);
+            retStr.pop_back();
+            if (linefeedToSpace)
+            {
+                retStr = retStr.append(" ");
+            }
         }
+    }
+    if ((linefeedToSpace) && (!retStr.empty()) && (retStr.at(retStr.length() - 1) == ' '))
+    {
+        retStr.pop_back();
     }
     free(ln);
     pclose(fp);
