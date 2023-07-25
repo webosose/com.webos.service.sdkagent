@@ -133,19 +133,19 @@ std::string interval_cpu_usage(std::string pid)
     return cpu_usage_stream.str();
 }
 
-std::string exceptionProcesses[3] = {"telegraf"};
+std::string exceptionProcesses[1] = {"telegraf"};
 void calculateProcessMonitoring(std::string processName, std::string pid)
 {
     if (pid.empty() || (stringToPositiveInt(pid) < 0))
         return;
 
-    for (int i = 0; i < 3; i++)
-    {
-        if (processName.find(exceptionProcesses[i]) != std::string::npos)
-        {
-            return;
-        }
-    }
+    // for (int i = 0; i < 1; i++)
+    // {
+    //     if (processName.find(exceptionProcesses[i]) != std::string::npos)
+    //     {
+    //         return;
+    //     }
+    // }
     std::string sendData = std::string("processMonitoring");
     sendData += ",processName=" + processName + ",pid=" + pid + " ";
 
@@ -172,7 +172,7 @@ void calculateProcessMonitoring(std::string processName, std::string pid)
     cmd = "grep -e '^Private' /proc/" + pid + "/smaps | awk '{sum += $2} END {print sum}'";
     std::string smaps_USS = LunaApiCollector::Instance()->executeCommand(cmd);
     sendData += ",smaps_USS=" + smaps_USS;
-    // SDK_LOG_INFO(MSGID_SDKAGENT, 0, "sendData : %s", sendData.c_str());
+    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "sendData : %s", sendData.c_str());
     LunaApiCollector::Instance()->sendToTelegraf(sendData);
 }
 
