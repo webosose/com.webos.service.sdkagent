@@ -224,7 +224,7 @@ pbnjson::JValue LunaApiBaseCategory::readwebOSConfigJson()
         configFile.close();
         std::string cmd = "echo \"{}\" > ";
         cmd = cmd.append(WEBOS_CONFIG_JSON);
-        executeCommand(cmd);
+        executeCommand(std::move(cmd));
         readAllData = "{}";
     }
     webOSConfigMutex.unlock();

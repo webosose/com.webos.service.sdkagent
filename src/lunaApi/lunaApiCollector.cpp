@@ -246,7 +246,7 @@ void processProcstat(pbnjson::JValue tmpConfigJson)
             if (processList.length() > 0)
             {
                 std::string procstatCmd = "echo -e '[[inputs.procstat]]\npid_tag=true\npattern=\"" + processList + "\"' > /etc/telegraf/telegraf.d/procstat.conf";
-                LunaApiCollector::Instance()->executeCommand(procstatCmd);
+                LunaApiCollector::Instance()->executeCommand(std::move(procstatCmd));
                 return;
             }
         }
@@ -447,7 +447,7 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
 
     // test new telegraf.conf file
     std::string testCmd = "telegraf --config " + tmpTelegrafConfPath + " -test 2>&1";
-    std::string cmdResult = Instance()->executeCommand(testCmd);
+    std::string cmdResult = Instance()->executeCommand(std::move(testCmd));
 
     std::string tmpCmd;
     if (cmdResult.find("E! [telegraf] Error") != std::string::npos)
@@ -466,13 +466,13 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
             webOSConfigJson.put(webOSkey, webOSconfig[webOSkey]);
         }
         processProcstat(webOSConfigJson);
-        LunaApiCollector::Instance()->writewebOSConfigJson(webOSConfigJson);
+        LunaApiCollector::Instance()->writewebOSConfigJson(std::move(webOSConfigJson));
 
         // Save telegraf config to telegraf.conf
         tmpCmd = "mv " + tmpTelegrafConfPath + " " + telegrafConfPath;
         reply.put("returnValue", true);
     }
-    Instance()->executeCommand(tmpCmd);
+    Instance()->executeCommand(std::move(tmpCmd));
 
     Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
 
@@ -644,7 +644,7 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
     tmpCmd += " -test 2>&1";
 
     pbnjson::JValue reply = pbnjson::Object();
-    std::string cmdResult = Instance()->executeCommand(tmpCmd);
+    std::string cmdResult = Instance()->executeCommand(std::move(tmpCmd));
     if (cmdResult.find("E! [telegraf] Error") != std::string::npos)
     {
         Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
@@ -667,7 +667,14 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
         if (subStr.length() > 0)
         {
             pbnjson::JValue resultObj = pbnjson::Object();
-            int headerIndex = subStr.find(" ");
+            int headerIndex = subStr.find(" ", 0);
+            if ((headerIndex != std::string::npos) && (headerIndex > 0))
+            {
+                while (subStr.substr(headerIndex - 1, 2).compare("\\ ") == 0)
+                {
+                    headerIndex = subStr.find(" ", (headerIndex + 1));
+                }
+            }
             std::string header = subStr.substr(0, headerIndex);
             std::string resultTitle = header.substr(0, header.find(","));
             resultObj = convertDataToJson(header.substr(header.find(",") + 1, header.length() - 1));
