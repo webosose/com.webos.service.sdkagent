@@ -576,6 +576,23 @@ bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
     return true;
 }
 
+int findIndex(std::string inputString, std::string divider, int startIndex)
+{
+    int retIndex = inputString.find(divider, startIndex);
+    if (retIndex == std::string::npos)
+    {
+        retIndex = inputString.length();
+    }
+    else if (retIndex > 0)
+    {
+        while (inputString.substr(retIndex - 1, 2).compare("\\" + divider) == 0)
+        {
+            retIndex = inputString.find(divider, (retIndex + 1));
+        }
+    }
+    return retIndex;
+}
+
 pbnjson::JValue convertDataToJson(std::string data)
 {
     pbnjson::JValue reply = pbnjson::Object();
@@ -584,11 +601,7 @@ pbnjson::JValue convertDataToJson(std::string data)
     std::string divider = ",";
     while (true)
     {
-        cur = data.find(divider, prev);
-        if (cur == std::string::npos)
-        {
-            cur = data.length();
-        }
+        cur = findIndex(data, divider, prev);
         std::string subStr = data.substr(prev, cur - prev);
         int doubleQuotationCount = 0;
         int divideIndex = 0;
@@ -667,21 +680,17 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
         if (subStr.length() > 0)
         {
             pbnjson::JValue resultObj = pbnjson::Object();
-            int headerIndex = subStr.find(" ", 0);
-            if ((headerIndex != std::string::npos) && (headerIndex > 0))
-            {
-                while (subStr.substr(headerIndex - 1, 2).compare("\\ ") == 0)
-                {
-                    headerIndex = subStr.find(" ", (headerIndex + 1));
-                }
-            }
+            int headerIndex = findIndex(subStr, " ", 0);
+            int timeIndex = subStr.rfind(" ");
+
             std::string header = subStr.substr(0, headerIndex);
             std::string resultTitle = header.substr(0, header.find(","));
             resultObj = convertDataToJson(header.substr(header.find(",") + 1, header.length() - 1));
 
-            int timeIndex = subStr.rfind(" ");
-            pbnjson::JValue dataObj = convertDataToJson(subStr.substr(headerIndex + 1, timeIndex - (headerIndex + 1)));
+            std::string data = subStr.substr(headerIndex + 1, timeIndex - (headerIndex + 1));
+            pbnjson::JValue dataObj = convertDataToJson(data);
             resultObj.put("data", dataObj);
+
             std::string time = subStr.substr(timeIndex + 1, (subStr.length() - 1) - (timeIndex + 1));
             resultObj.put("time", time);
 
