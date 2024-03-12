@@ -66,39 +66,84 @@ bool ThreadForInterval::cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void 
     return true;
 }
 
-float stringToFloat(std::string str)
+// float stringToFloat(std::string str)
+// {
+//     if (str.empty())
+//         return 0.0f;
+//     try
+//     {
+//         return std::stof(str);
+//     }
+//     catch (const std::exception &expn)
+//     {
+//         return 0.0f;
+//     }
+//     catch (...)
+//     {
+//         return 0.0f;
+//     }
+// }
+
+// wrapping std::stof because it may throw an exception
+float stringToFloat(const std::string &str, size_t *idx = 0)
 {
-    if (str.empty())
-        return 0.0f;
+
     try
     {
-        return std::stof(str);
+        float ret = std::stof(str, idx);
+        return ret;
     }
-    catch (const std::exception &expn)
-    {
+    catch (const std::invalid_argument &ia) {
         return 0.0f;
     }
-    catch (...)
-    {
+    catch (const std::out_of_range &oor) {
+        return 0.0f;
+    }
+    catch (const std::exception &e) {
         return 0.0f;
     }
 }
 
-int stringToPositiveInt(std::string str)
+float stringToFloat(const std::wstring &str, size_t *idx = 0)
 {
-    if (str.empty())
-        return -1;
     try
     {
-        return std::stoi(str);
+        float ret = std::stof(str, idx);
+        return ret;
     }
-    catch (const std::exception &expn)
-    {
+    catch (const std::invalid_argument &ia) {
+        return 0.0f;
+    }
+    catch (const std::out_of_range &oor) {
+        return 0.0f;
+    }
+    catch (const std::exception &e) {
+        return 0.0f;
+    }
+}
+
+// wrapping std::stoi because it may throw an exception
+int stringToPositiveInt(const std::string& str, std::size_t* pos = 0, int base = 10) {
+
+    try {
+        int ret = std::stoi(str, pos, base);
+        return ret;
+    }
+
+    catch (const std::invalid_argument& ia) {
+        //std::cerr << "Invalid argument: " << ia.what() << std::endl;
         return -1;
     }
-    catch (...)
+
+    catch (const std::out_of_range& oor) {
+        //std::cerr << "Out of Range error: " << oor.what() << std::endl;
+        return -2;
+    }
+
+    catch (const std::exception& e)
     {
-        return -1;
+        //std::cerr << "Undefined error: " << e.what() << std::endl;
+        return -3;
     }
 }
 
@@ -114,7 +159,7 @@ std::string interval_cpu_usage(std::string pid)
     std::string process_stime_str = LunaApiCollector::Instance()->executeCommand(std::move(cmd));
     float process_time = stringToFloat(std::move(process_utime_str)) + stringToFloat(std::move(process_stime_str));
 
-    int int_pid = stringToPositiveInt(std::move(pid));
+    int int_pid = stringToPositiveInt(pid);
     std::map<int, float>::iterator iter;
     iter = old_process_time_map.find(int_pid);
     if (iter == old_process_time_map.end())

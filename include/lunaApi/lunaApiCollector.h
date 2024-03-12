@@ -17,15 +17,13 @@
 #ifndef __LUNAAPICOLLECTOR_H__
 #define __LUNAAPICOLLECTOR_H__
 
-#include <json-c/json.h>
+// #include <json-c/json.h>
 #include <lunaApiBaseCategory.h>
-#include <algorithm>
-#include <fstream>
-#include <iostream>
-
 #include "threadForInterval.h"
 #include "threadForSocket.h"
 
+// Singleton class
+// https://henriquesd.medium.com/singleton-vs-static-class-e6b2b32ec331
 class LunaApiCollector : public LunaApiBaseCategory
 {
 public:
@@ -50,6 +48,8 @@ public:
     void initialize();
     void sendToTelegraf(std::string &data);
 
+    void loadInitConfig();
+
 private:
     static LunaApiCollector *_instance;
 
@@ -57,10 +57,9 @@ private:
     ~LunaApiCollector();
 
     static const LSMethod collectorMethods[];
-    json_object *availableConfigurationJson;
 
-    ThreadForInterval *pThreadForInterval;
-    ThreadForSocket *pThreadForSocket;
+    ThreadForInterval *pThreadForInterval = nullptr;
+    ThreadForSocket *pThreadForSocket = nullptr;
 
     static bool start(LSHandle *sh, LSMessage *msg, void *data);
     static bool stop(LSHandle *sh, LSMessage *msg, void *data);

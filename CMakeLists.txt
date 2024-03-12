@@ -65,6 +65,7 @@ set(SRC_LIST
     ${SRC_DIR}/lunaApi/threadForInterval.cpp
     ${SRC_DIR}/lunaApi/threadForSocket.cpp
     ${SRC_DIR}/util/logging.cpp
+    ${SRC_DIR}/util/tomlParser.cpp
     ${SRC_DIR}/main.cpp
 )
 
