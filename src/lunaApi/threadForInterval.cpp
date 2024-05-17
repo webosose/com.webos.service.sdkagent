@@ -183,14 +183,7 @@ void calculateProcessMonitoring(std::string processName, std::string pid)
 {
     if (pid.empty() || (stringToPositiveInt(pid) < 0))
         return;
-
-    // for (int i = 0; i < 1; i++)
-    // {
-    //     if (processName.find(exceptionProcesses[i]) != std::string::npos)
-    //     {
-    //         return;
-    //     }
-    // }
+        
     std::string sendData = std::string("processMonitoring");
     sendData += ",processName=" + processName + ",pid=" + pid + " ";
 
