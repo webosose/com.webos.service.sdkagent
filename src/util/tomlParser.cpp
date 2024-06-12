@@ -34,51 +34,27 @@ std::string trim_string(const std::string &str)
     return str.substr(first, last - first + 1);
 }
 
-void _removeAllSpaces(std::string &str)
-{
-    size_t pos = 0;
-    for (size_t i = 0; i < str.size(); i++)
-    {
-        if (str[i] != ' ')
-        {
-            str[pos++] = str[i];
-        }
-    }
-    str.erase(str.begin() + pos, str.end());
-}
-
 std::string removeAllSpaces(std::string str)
 {
     size_t pos = 0;
+    char locked = 0;
     for (size_t i = 0; i < str.size(); i++)
     {
-        if (str[i] != ' ')
-        {
+        if (locked) {
             str[pos++] = str[i];
+        }
+        else {
+            if (str[i] != ' ') {
+                str[pos++] = str[i];
+            }
+        }
+
+        if (str[i] == '\"') {
+            locked = 1 - locked;
         }
     }
     str.erase(str.begin() + pos, str.end());
     return str;
-}
-
-std::vector<std::string> parseConfigValue(std::string &str)
-{
-    _removeAllSpaces(str);
-
-    if (str[0] != '[')
-        return {str};
-    std::vector<std::string> ret;
-    size_t prev = 1;
-    do
-    {
-        size_t pos = str.find(',', prev);
-        if (pos == std::string::npos)
-            break;
-        ret.push_back(str.substr(prev, pos - prev));
-        prev = pos + 1;
-    } while (true);
-    ret.push_back(str.substr(prev, str.size() - prev - 1));
-    return ret;
 }
 
 // just a toml reader version for use in sdkagent service, not for general toml parsing
@@ -134,15 +110,16 @@ tomlObject readTomlFile(std::string filePath)
 
 bool writeTomlSection(const std::string &filePath, const std::string &sectionName, const tomlSectionObject &obj)
 {
-    std::stringstream ss;
-    ss << '[' << sectionName << "]\n";
+    std::string strBuffer;
+    strBuffer += "[" + sectionName + "]\n";
     for (const auto &sectionData : obj)
     {
-        ss << sectionData.first << "=" << sectionData.second << '\n';
+        // ss << sectionData.first << "=" << sectionData.second << '\n';
+        strBuffer += sectionData.first + "=" + sectionData.second + "\n";
     }
 
     std::ofstream fp(filePath);
-    fp << ss.rdbuf();
+    fp << strBuffer;
     fp.close();
 
     return true;
@@ -150,19 +127,19 @@ bool writeTomlSection(const std::string &filePath, const std::string &sectionNam
 
 void writeTomlFile(const std::string &filePath, const tomlObject &obj)
 {
-    std::stringstream ss;
+    std::string strBuffer;
     std::string spc = "  ";
     for (auto &it : obj)
     {
-        ss << '[' << it.first << "]\n";
+        strBuffer += "[" + it.first + "]\n";
         for (auto &configParam : it.second)
         {
-            ss << spc << configParam.first << '=' << configParam.second << '\n';
+            strBuffer += spc + configParam.first + "=" + configParam.second + "\n";
         }
     }
 
     std::ofstream fp(filePath);
-    fp << ss.rdbuf();
+    fp << strBuffer;
     fp.close();
 }
 
@@ -290,6 +267,14 @@ std::string tomlObjectToJsonString(const tomlObject &obj, const std::string &ini
 //         fp.close();
 //     }
 // }
+
+bool fileExists(const char * filePath) {
+    std::ifstream fp(filePath);
+    bool ret = true;
+    if (!fp || (fp.fail())) ret = false;
+    fp.close();
+    return ret;
+}
 
 pbnjson::JValue stringToJValue(const char *rawData)
 {

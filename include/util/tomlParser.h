@@ -27,4 +27,6 @@ std::tuple<bool, tomlObject> jsonStringToTomlObject(const char *jsonStr);
 
 std::string tomlObjectToJsonString(const tomlObject &obj, const std::string &initialIndentation);
 
+bool fileExists(const char * filePath);
+
 pbnjson::JValue stringToJValue(const char *rawData);
