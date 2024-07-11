@@ -153,7 +153,7 @@ void LunaApiBaseCategory::postEvent(LSHandle *handle, void *subscribeKey, void *
     return;
 }
 
-std::string LunaApiBaseCategory::executeCommand(std::string pszCommand, bool linefeedToSpace = false)
+std::string LunaApiBaseCategory::executeCommand(std::string pszCommand, bool linefeedToSpace)
 {
     FILE *fp = popen(pszCommand.c_str(), "r");
     if (!fp)

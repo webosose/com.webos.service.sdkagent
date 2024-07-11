@@ -24,7 +24,8 @@
 LunaApiCollector *LunaApiCollector::_instance = NULL;
 
 #define SDKAGENT_INIT_CONFIG "/var/lib/com.webos.service.sdkagent/initConfig.json"
-#define TELEGRAF_CONFIG_DIR "/etc/telegraf/telegraf.d/"
+// #define TELEGRAF_CONFIG_DIR "/etc/telegraf/telegraf.d/"
+#define TELEGRAF_CONFIG_DIR "/var/lib/com.webos.service.sdkagent/telegraf.d/"
 #define TELEGRAF_MAIN_CONFIG "/etc/telegraf/telegraf.conf"
 
 // luna API lists
@@ -70,9 +71,16 @@ void LunaApiCollector::loadInitConfig()
         return;
     }
 
-    std::stringstream strBuffer;
-    strBuffer << fp.rdbuf();
-    auto initConfig = json_tokener_parse(strBuffer.str().c_str());
+    std::string strBuffer;
+    fp.seekg(0, std::ios::end);
+    strBuffer.reserve(fp.tellg());
+    fp.seekg(0, std::ios::beg);
+    strBuffer.assign(
+        (std::istreambuf_iterator<char>(fp)),
+        std::istreambuf_iterator<char>()
+    );
+
+    auto initConfig = json_tokener_parse(strBuffer.c_str());
     if (!initConfig)
     {
         // need SDK_LOG
@@ -559,7 +567,6 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
             std::string time = subStr.substr(timeIndex + 1, (subStr.length() - 1) - (timeIndex + 1));
             resultObj.put("time", pbnjson::JValue(time));
 
-            // CID 9603867: CERT-CPP Expressions (CERT EXP60-CPP)       --> check to remove after static analysis
             resultOneObject.put(resultTitle, resultObj);
             dataArray.append(resultOneObject);
         }
@@ -580,39 +587,24 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
 void splitMainConfig()
 {
     auto mainConfig = readTomlFile(TELEGRAF_MAIN_CONFIG);
-    std::vector<std::string> toBeRemovedSections;
 
     for (auto &it : mainConfig)
     {
         std::string section = it.first;
-        SDK_LOG_INFO(MSGID_SDKAGENT, 1, PMLOGKS("SECTION", section.c_str()), "com.webos.service.sdkagent loop through %s", __FUNCTION__);
-        
-        if (section.compare(0, 6, "webOS.") == 0)
-            continue;
+        if (section.compare(0, 6, "webOS.") == 0) continue;
 
         if (availableConfiguration.find(section) != availableConfiguration.end())
         {
             auto configPath = getSectionConfigPath(section);
-            auto subConfig = readTomlFile(configPath);
-            for (const auto & configParam : it.second)
-            {
-                // ignore if subfile has this configParam
-                if (subConfig[section].find(configParam.first) != subConfig[section].end()) continue;
+            if (fileExists(configPath.c_str())) continue;
+            tomlObject plugin;
 
-                subConfig[section][configParam.first] = configParam.second;
+            for (const auto & configParam : it.second) {
+                plugin[section][configParam.first] = configParam.second;
             }
-            SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s( ... ) , com.webos.service.sdkagent write to %s", __FUNCTION__, configPath.c_str());
-            writeTomlSection(configPath, section, subConfig[section]);
-            toBeRemovedSections.push_back(section);
+            writeTomlSection(configPath, section, plugin[section]);
         }
     }
-
-    for (const auto & section : toBeRemovedSections)
-    {
-        mainConfig.erase(section);
-    }
-    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s( ... ) , rewrite main config %s", __FUNCTION__, TELEGRAF_MAIN_CONFIG);
-    writeTomlFile(TELEGRAF_MAIN_CONFIG, mainConfig);
 }
 
 /**
@@ -620,21 +612,15 @@ void splitMainConfig()
  */
 void LunaApiCollector::initialize()
 {
-    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s( ... ) , com.webos.service.sdkagent LunaApiCollector.initialize()", __FUNCTION__);
+    splitMainConfig();
 
     // for create the configuration directory for sdkagent service
     Instance()->executeCommand("mkdir -p /var/lib/com.webos.service.sdkagent");
+
     // Check the flag using startOnBoot file for auto-start on boot
-
-    // if [agent] or [outputs.influxdb] still remain in telegraf.conf -> try to move sub config file
-    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s( ... ) , com.webos.service.sdkagent call splitMainConfig()", __FUNCTION__);
-    splitMainConfig();
-
     std::ifstream startOnBoot("/var/lib/com.webos.service.sdkagent/startOnBoot");
-    SDK_LOG_INFO(MSGID_SDKAGENT, 1, PMLOGKFV("startOnBoot exists", "%d", startOnBoot.good()), "com.webos.service.sdkagent check startOnBoot %s", __FUNCTION__);
     if (startOnBoot.good())
     {
-        SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s( ... ) , com.webos.service.sdkagent call systemctl start telegraf", __FUNCTION__);
         Instance()->executeCommand("systemctl start telegraf");
     }
     startOnBoot.close();

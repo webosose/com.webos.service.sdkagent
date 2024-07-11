@@ -66,28 +66,9 @@ bool ThreadForInterval::cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void 
     return true;
 }
 
-// float stringToFloat(std::string str)
-// {
-//     if (str.empty())
-//         return 0.0f;
-//     try
-//     {
-//         return std::stof(str);
-//     }
-//     catch (const std::exception &expn)
-//     {
-//         return 0.0f;
-//     }
-//     catch (...)
-//     {
-//         return 0.0f;
-//     }
-// }
-
 // wrapping std::stof because it may throw an exception
 float stringToFloat(const std::string &str, size_t *idx = 0)
 {
-
     try
     {
         float ret = std::stof(str, idx);
@@ -302,74 +283,91 @@ bool ThreadForInterval::cb_getRunningProcess(LSHandle *sh, LSMessage *msg, void 
     return true;
 }
 
+bool needUpdateTelegrafAgentInterval(std::string serviceLog)
+{
+    if (configIntervalSecond <= 0) return true;
+
+    // check if telegraf is recently started. If yes -> update interval
+
+    // serviceLog is result of command: systemctl status telegraf -l | grep "Active: active (running)"
+    // example serviceLog:  Active: active (running) since Thu 2024-06-06 01:35:21 PDT; 2s ago
+
+    serviceLog = serviceLog.substr(serviceLog.find(";") + 2);
+    serviceLog = serviceLog.substr(0, serviceLog.find(" "));
+
+    // just started within 60s ago
+    return (serviceLog.find("s") != std::string::npos);
+}
+
+int ThreadForInterval::getTelegrafAgentInterval()
+{
+    std::string cmdResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Interval:\"");
+    if (!cmdResult.empty())
+    {
+        cmdResult = cmdResult.substr(cmdResult.find("Interval:"));
+        cmdResult = cmdResult.substr(cmdResult.find(":") + 1);
+        cmdResult = cmdResult.substr(0, cmdResult.find(","));
+
+        int newIntervalInSecond = 0;
+
+        if (cmdResult.find("ms") != std::string::npos)
+        {
+            newIntervalInSecond += 1;
+            cmdResult = cmdResult.substr(cmdResult.find("ms") + 1);
+        }
+        if (cmdResult.find("h") != std::string::npos)
+        {
+            std::string h = cmdResult.substr(0, cmdResult.find("h"));
+            int hour = atoi(h.c_str());
+            newIntervalInSecond += hour * 60 * 60;
+            cmdResult = cmdResult.substr(cmdResult.find("h") + 1);
+        }
+        if (cmdResult.find("m") != std::string::npos)
+        {
+            std::string m = cmdResult.substr(0, cmdResult.find("m"));
+            int minute = atoi(m.c_str());
+            newIntervalInSecond += minute * 60;
+            cmdResult = cmdResult.substr(cmdResult.find("m") + 1);
+        }
+        if (cmdResult.find("s") != std::string::npos)
+        {
+            std::string s = cmdResult.substr(0, cmdResult.find("s"));
+            int second = atoi(s.c_str());
+            newIntervalInSecond += second;
+        }
+
+        return newIntervalInSecond;
+    }
+
+    return -1;
+}
+
 gpointer ThreadForInterval::intervalHandle_process(gpointer data)
 {
     IntervalHandle *intervalHandle = (IntervalHandle *)data;
-    int intervalSecCnt = 1;
+    int intervalCountDown = 1;
     while (intervalHandle != NULL)
     {
         gpointer msg = g_async_queue_try_pop(intervalHandle->queue);
         if ((msg) && (msg == GINT_TO_POINTER(INTERVAL_THREAD_MSG_STOP)))
             break;
 
-        std::string stateResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Active: active (running)\"");
-        if (!stateResult.empty()) // if telegraf is active
+        std::string telegrafLog = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Active: active (running)\"");
+        if (!telegrafLog.empty()) // if telegraf is active
         {
-            bool isNeedUpdateInterval = false;
-            stateResult = stateResult.substr(stateResult.find(";") + 2);
-            stateResult = stateResult.substr(0, stateResult.find(" "));
-            if (configIntervalSecond <= 0) // initial state
+            if (needUpdateTelegrafAgentInterval(std::move(telegrafLog)))
             {
-                isNeedUpdateInterval = true;
-            }
-            else if (stateResult.find("s") != std::string::npos) // telegraf was run in 60 seconds
-            {
-                isNeedUpdateInterval = true;
-            }
-            if (isNeedUpdateInterval) // get Interval from telegraf status log
-            {
-                std::string cmdResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Interval:\"");
-                if (!cmdResult.empty())
+                int newIntervalInSecond = getTelegrafAgentInterval();
+                if ((newIntervalInSecond != -1) && (configIntervalSecond != newIntervalInSecond))
                 {
-                    int tmpIntervalSecond = 0;
-                    cmdResult = cmdResult.substr(cmdResult.find("Interval:"));
-                    cmdResult = cmdResult.substr(cmdResult.find(":") + 1);
-                    cmdResult = cmdResult.substr(0, cmdResult.find(","));
-                    if (cmdResult.find("ms") != std::string::npos)
-                    {
-                        tmpIntervalSecond += 1;
-                        cmdResult = cmdResult.substr(cmdResult.find("ms") + 1);
-                    }
-                    if (cmdResult.find("h") != std::string::npos)
-                    {
-                        std::string h = cmdResult.substr(0, cmdResult.find("h"));
-                        int hour = atoi(h.c_str());
-                        tmpIntervalSecond += hour * 60 * 60;
-                        cmdResult = cmdResult.substr(cmdResult.find("h") + 1);
-                    }
-                    if (cmdResult.find("m") != std::string::npos)
-                    {
-                        std::string m = cmdResult.substr(0, cmdResult.find("m"));
-                        int minute = atoi(m.c_str());
-                        tmpIntervalSecond += minute * 60;
-                        cmdResult = cmdResult.substr(cmdResult.find("m") + 1);
-                    }
-                    if (cmdResult.find("s") != std::string::npos)
-                    {
-                        std::string s = cmdResult.substr(0, cmdResult.find("s"));
-                        int second = atoi(s.c_str());
-                        tmpIntervalSecond += second;
-                    }
-                    if (configIntervalSecond != tmpIntervalSecond)
-                    {
-                        configIntervalSecond = tmpIntervalSecond;
-                        intervalSecCnt = 1;
-                    }
+                    configIntervalSecond = newIntervalInSecond;
+                    intervalCountDown = 1;     // reassign to start new interval
                 }
             }
-            if (intervalSecCnt <= 1)
+
+            if (intervalCountDown <= 1)
             {
-                intervalSecCnt = configIntervalSecond;
+                intervalCountDown = configIntervalSecond;
 
                 pbnjson::JValue tmpValue = LunaApiCollector::Instance()->readwebOSConfigJson();
                 if (tmpValue.hasKey("webOS.webProcessSize") && (tmpValue["webOS.webProcessSize"]).hasKey("enabled") && ((tmpValue["webOS.webProcessSize"])["enabled"]).asBool())
@@ -410,7 +408,7 @@ gpointer ThreadForInterval::intervalHandle_process(gpointer data)
             }
             else
             {
-                intervalSecCnt--;
+                intervalCountDown--;
             }
         }
 

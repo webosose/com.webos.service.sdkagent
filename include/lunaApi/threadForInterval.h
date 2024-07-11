@@ -49,6 +49,8 @@ private:
 
     static bool cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void *user_data);
     static bool cb_getRunningProcess(LSHandle *sh, LSMessage *msg, void *user_data);
+
+    static int getTelegrafAgentInterval();
 };
 
 #endif

@@ -28,7 +28,7 @@ public:
     ~LunaApiBaseCategory();
 
     bool initLunaServiceCategory(LSHandle *);
-    std::string executeCommand(std::string, bool linefeedToSpace = false);
+    std::string executeCommand(std::string pszCommand, bool linefeedToSpace = false);
     pbnjson::JValue convertStringToJson(const char *rawData);
     pbnjson::JValue readwebOSConfigJson();
     bool writewebOSConfigJson(pbnjson::JValue);
