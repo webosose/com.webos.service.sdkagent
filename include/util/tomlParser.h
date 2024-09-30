@@ -35,6 +35,8 @@ bool writeTomlSection(const std::string &filePath, const std::string &sectionNam
 
 void writeTomlFile(const std::string &filePath, const tomlObject &obj);
 
+void disableTomlSection(const char* filePath, const std::unordered_set<std::string> &sections);
+
 // void displayTomlFile(tomlObject & obj, std::string outFile = "");
 
 std::tuple<bool, tomlObject> jsonStringToTomlObject(const char *jsonStr);

@@ -15,9 +15,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "tomlParser.h"
+#include "common.h"
 #include <fstream>
 #include <iostream> // to be removed
 #include <sstream>
+#include <unordered_set>
 #include <json-c/json.h>
 
 std::string trim_string(const std::string &str, int first, int last)
@@ -158,6 +160,62 @@ void writeTomlFile(const std::string &filePath, const tomlObject &obj)
     std::ofstream fp(filePath);
     fp << strBuffer;
     fp.close();
+}
+
+void disableTomlSection(const char * filePath, const std::unordered_set<std::string> &sections)
+{
+    std::string strBuffer = readTextFile(filePath);
+    if (strBuffer.empty()) return;
+
+    std::string section;
+    bool commentOut = false;
+
+    size_t currPos = 0;
+    size_t lineBegPos = 0;
+    bool not_end_of_file = true;
+
+    while (lineBegPos < strBuffer.size())
+    {
+        auto pos = strBuffer.find_first_not_of(' ', currPos);
+        lineBegPos = strBuffer.find('\n', currPos+1);
+        if (lineBegPos == std::string::npos) {
+            not_end_of_file = false;
+            lineBegPos = strBuffer.size();
+        } else {
+            lineBegPos++;
+        }
+       
+        if (pos < lineBegPos) {
+
+            // new section found
+            if (strBuffer[pos] == '[') {
+                section = "";
+                auto sb = strBuffer.find_first_not_of("[", pos + 1);
+                size_t se = sb;
+                while ((se < strBuffer.size()) && (strBuffer[se] != ']')) se++;
+                section = strBuffer.substr(sb, se - sb);
+
+                if (sections.find(section) != sections.end()) {
+                    commentOut = true;
+                    strBuffer.insert(currPos, "# ");
+                    lineBegPos += 2;
+                }
+                else {
+                    commentOut = false;
+                }
+            }
+            else {
+                if (commentOut) {
+                    strBuffer.insert(currPos, "# ");
+                    lineBegPos += 2;
+                }
+            }
+        }
+
+        currPos = lineBegPos;
+    }
+
+    writeTextFile(filePath, strBuffer);
 }
 
 std::string fixDoubleForwardSlash(std::string str)

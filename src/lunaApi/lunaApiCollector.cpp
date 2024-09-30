@@ -21,19 +21,14 @@
 #include "tomlParser.h"
 #include "common.h"
 #include "telegrafController.h"
-#include "common.h"
-#include "telegrafController.h"
 #include <algorithm>
 #include <json-c/json.h>
 #include <pbnjson.hpp>
-#include <json-c/json.h>
-#include <pbnjson.hpp>
 
 LunaApiCollector *LunaApiCollector::_instance = nullptr;
-LunaApiCollector *LunaApiCollector::_instance = nullptr;
 
-#define TELEGRAF_MAIN_CONFIG (char*)"/var/lib/com.webos.service.sdkagent/telegraf/telegraf.conf"
-#define TELEGRAF_CONFIG_DIR (char*)"/var/lib/com.webos.service.sdkagent/telegraf/telegraf.d/"
+#define TELEGRAF_CONFIG_DIR "/var/lib/com.webos.service.sdkagent/telegraf/telegraf.d/"
+#define TELEGRAF_MAIN_CONFIG "/var/lib/com.webos.service.sdkagent/telegraf.d/telegraf.conf"
 #define START_ON_BOOT_FLAG "/var/lib/com.webos.service.sdkagent/startOnBoot"
 
 // luna API lists
@@ -51,11 +46,6 @@ const LSMethod LunaApiCollector::collectorMethods[] = {
     {NULL, NULL},
 };
 
-// Called when starting the service
-void LunaApiCollector::initialize()
-{
-    if (fileExists(START_ON_BOOT_FLAG)) {
-        TelegrafController::getInstance()->start();
 // Called when starting the service
 void LunaApiCollector::initialize()
 {
@@ -89,7 +79,6 @@ bool LunaApiCollector::start(LSHandle *sh, LSMessage *msg, void *data)
     }
 
     TelegrafController::getInstance()->start();
-    TelegrafController::getInstance()->start();
     Instance()->LSMessageReplyPayload(sh, msg, NULL);
 
     return true;
@@ -105,7 +94,6 @@ bool LunaApiCollector::stop(LSHandle *sh, LSMessage *msg, void *data)
     }
 
     TelegrafController::getInstance()->stop();
-    TelegrafController::getInstance()->stop();
     Instance()->LSMessageReplyPayload(sh, msg, NULL);
 
     return true;
@@ -120,7 +108,6 @@ bool LunaApiCollector::restart(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    TelegrafController::getInstance()->restart();
     TelegrafController::getInstance()->restart();
     Instance()->LSMessageReplyPayload(sh, msg, NULL);
 
@@ -146,8 +133,6 @@ bool LunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data)
     bool isEnable = paramObj["enable"].asBool();
     std::string cmd = isEnable ? "touch " + std::string(START_ON_BOOT_FLAG) : "rm " + std::string(START_ON_BOOT_FLAG);
     executeCommand(cmd.c_str());
-    std::string cmd = isEnable ? "touch " + std::string(START_ON_BOOT_FLAG) : "rm " + std::string(START_ON_BOOT_FLAG);
-    executeCommand(cmd.c_str());
     Instance()->LSMessageReplyPayload(sh, msg, NULL);
 
     return true;
@@ -167,22 +152,12 @@ bool LunaApiCollector::getStatus(LSHandle *sh, LSMessage *msg, void *data)
     std::string status = TelegrafController::getInstance()->isRunning() ? "active" : "inactive";
     reply.put("status", status);
     reply.put("startOnBoot", fileExists(START_ON_BOOT_FLAG));
-    std::string status = TelegrafController::getInstance()->isRunning() ? "active" : "inactive";
-    reply.put("status", status);
-    reply.put("startOnBoot", fileExists(START_ON_BOOT_FLAG));
 
-    Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
     Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
 
     return true;
 }
 
-// luna-send -f -n 1 luna://com.webos.service.sdkagent/collector/getConfig '{}'
-bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
-{
-    if (!json_tokener_parse(LSMessageGetPayload(msg)))
-    {
-        Instance()->LSMessageReplyErrorBadJSON(sh, msg);
 // luna-send -f -n 1 luna://com.webos.service.sdkagent/collector/getConfig '{}'
 bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
 {
@@ -198,20 +173,11 @@ bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
     replyConfig = "{\n    \"returnValue\": true,\n    \"config\": " + replyConfig + "\n}";
 
     Instance()->LSMessageReplyPayload(sh, msg, replyConfig.c_str());
-    }
-
-    tomlObject telegrafConfig = TelegrafController::getInstance()->getConfig();
-
-    std::string replyConfig = tomlObjectToJsonString(telegrafConfig, std::string("    "));
-    replyConfig = "{\n    \"returnValue\": true,\n    \"config\": " + replyConfig + "\n}";
-
-    Instance()->LSMessageReplyPayload(sh, msg, replyConfig.c_str());
     return true;
 }
 
 bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
 {
-    if (TelegrafController::getInstance()->isRunning())
     if (TelegrafController::getInstance()->isRunning())
     {
         // cannot set the config while telegraf is running
@@ -238,21 +204,17 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
 
     // check if all configurations in inputConfig are in availableConfigurations
     if (!TelegrafController::getInstance()->checkInputConfig(inputConfig))
-    // check if all configurations in inputConfig are in availableConfigurations
-    if (!TelegrafController::getInstance()->checkInputConfig(inputConfig))
     {
         Instance()->LSMessageReplyErrorInvalidParams(sh, msg);
         return false;
     }
 
     if (!TelegrafController::getInstance()->updateConfig(inputConfig))
-    if (!TelegrafController::getInstance()->updateConfig(inputConfig))
     {
         Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
         return false;
     }
 
-    Instance()->LSMessageReplyPayload(sh, msg, "{\"returnValue\": true}");
     Instance()->LSMessageReplyPayload(sh, msg, "{\"returnValue\": true}");
     return true;
 }
@@ -275,7 +237,6 @@ size_t findIndex(std::string inputString, std::string divider, int startIndex)
 }
 
 pbnjson::JValue convertDataToJson(std::string pData)
-pbnjson::JValue convertDataToJson(std::string pData)
 {
     pbnjson::JValue reply = pbnjson::Object();
     size_t prev = 0;
@@ -283,8 +244,6 @@ pbnjson::JValue convertDataToJson(std::string pData)
     std::string divider = ",";
     while (true)
     {
-        cur = findIndex(pData, divider, prev);
-        std::string subStr = pData.substr(prev, cur - prev);
         cur = findIndex(pData, divider, prev);
         std::string subStr = pData.substr(prev, cur - prev);
         int doubleQuotationCount = 0;
@@ -304,7 +263,6 @@ pbnjson::JValue convertDataToJson(std::string pData)
         }
         reply.put(subStr.substr(0, divideIndex), pbnjson::JValue(subStr.substr(divideIndex + 1, subStr.length() - 1)));
         prev = cur + divider.length();
-        if (cur == pData.length())
         if (cur == pData.length())
         {
             break;
@@ -327,7 +285,7 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    std::string tmpCmd = "telegraf -config " + std::string(TELEGRAF_MAIN_CONFIG) + " -config-directory " + std::string(TELEGRAF_CONFIG_DIR);
+    std::string tmpCmd = "telegraf";
     pbnjson::JValue paramObj = stringToJValue(LSMessageGetPayload(msg));
     std::string tmpArguments = " --input-filter ";
     if (paramObj.objectSize() > 0)
@@ -347,7 +305,6 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
     tmpCmd += " --test 2>&1";
 
     pbnjson::JValue reply = pbnjson::Object();
-    std::string cmdResult = executeCommand(std::move(tmpCmd));
     std::string cmdResult = executeCommand(std::move(tmpCmd));
     if (cmdResult.find("E! [telegraf] Error") != std::string::npos)
     {
@@ -397,15 +354,10 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
     reply.put("returnValue", true);
     reply.put("dataArray", dataArray);
     Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
-    Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
 
     return true;
 }
 
-void LunaApiCollector::sendToTelegraf(std::string &msg)
-{
-    if (pThreadForSocket) {
-        pThreadForSocket->sendToMSGQ(msg);
 void LunaApiCollector::sendToTelegraf(std::string &msg)
 {
     if (pThreadForSocket) {

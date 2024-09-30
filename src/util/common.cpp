@@ -65,6 +65,34 @@ bool fileExists(const char* filePath) {
     return ret;
 }
 
+std::string readTextFile(const char *filePath)
+{
+    std::ifstream fp(filePath);
+    if (!fp || fp.fail())
+    {
+        fp.close();
+        return "";
+    }
+
+    std::string strBuffer;
+    fp.seekg(0, std::ios::end);
+    strBuffer.reserve(fp.tellg());
+    fp.seekg(0, std::ios::beg);
+    strBuffer.assign(
+        (std::istreambuf_iterator<char>(fp)),
+        std::istreambuf_iterator<char>()
+    );
+
+    return strBuffer;
+}
+
+void writeTextFile(const char* filePath, std::string &strBuffer)
+{
+    std::ofstream fp(filePath);
+    fp << strBuffer;
+    fp.close();
+}
+
 pbnjson::JValue stringToJValue(const char* rawData)
 {
     pbnjson::JInput input(rawData);

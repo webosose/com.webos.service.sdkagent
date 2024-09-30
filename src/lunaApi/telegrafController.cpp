@@ -55,6 +55,7 @@ std::string getSectionConfigPath(std::string sectionName)
 
 TelegrafController::TelegrafController()
 {
+    splitMainConfig();
     initAvailableConfigurations();
 }
 
@@ -92,21 +93,8 @@ static std::tuple<bool, tomlObject> getTelegrafConfig()
 
 void TelegrafController::initAvailableConfigurations()
 {
-    std::ifstream fp(TELEGRAF_AVAILABLE_CONFIG);
-    if (!fp || fp.fail())
-    {
-        fp.close();
-        return;
-    }
-
-    std::string strBuffer;
-    fp.seekg(0, std::ios::end);
-    strBuffer.reserve(fp.tellg());
-    fp.seekg(0, std::ios::beg);
-    strBuffer.assign(
-        (std::istreambuf_iterator<char>(fp)),
-        std::istreambuf_iterator<char>()
-    );
+    std::string strBuffer = readTextFile(TELEGRAF_AVAILABLE_CONFIG);
+    if (strBuffer.empty()) return;
 
     auto initConfig = json_tokener_parse(strBuffer.c_str());
     if (!initConfig)
@@ -135,6 +123,45 @@ void TelegrafController::loadConfig()
 {
     bool ret = true;
     std::tie(ret, _allConfig) = getTelegrafConfig();
+
+    // load webOS Config
+    if (ret) {
+
+        pbnjson::JValue webOSConfigJson = TelegrafController::getInstance()->readwebOSConfigJson();
+        if (
+            webOSConfigJson.hasKey("webOS.webProcessSize") &&
+            webOSConfigJson["webOS.webProcessSize"].hasKey("enabled")
+        ) {
+            _allConfig["webOS.webProcessSize"]["enabled"] = "false";
+            if (webOSConfigJson["webOS.webProcessSize"]["enabled"].asBool()) {
+                _allConfig["webOS.webProcessSize"]["enabled"] = "true";
+            }
+        }
+
+        if (
+            webOSConfigJson.hasKey("webOS.processMonitoring") && 
+            webOSConfigJson["webOS.processMonitoring"].hasKey("enabled")
+        ) {
+            _allConfig["webOS.processMonitoring"]["enabled"] = "false";
+            if (webOSConfigJson["webOS.processMonitoring"]["enabled"].asBool()) {
+                _allConfig["webOS.processMonitoring"]["enabled"] = "true";
+                std::string processList = "[";
+                pbnjson::JValue process_name = (webOSConfigJson["webOS.processMonitoring"])["process_name"];
+                if (process_name.isArray())
+                {
+                    for (int i = 0; i < process_name.arraySize(); i++) {
+                        processList += '\"' + process_name[i].asString() + "\", ";
+                    }
+                    if ((!processList.empty()) && (processList.at(processList.length() - 2) == ',')) {
+                        processList.pop_back();
+                        processList.pop_back();
+                    }
+                }
+                processList += ']';
+                _allConfig["webOS.processMonitoring"]["process_name"] = processList;
+            }
+        }
+    }
 }
 
 pbnjson::JValue TelegrafController::readwebOSConfigJson()
@@ -181,8 +208,6 @@ void TelegrafController::splitMainConfig()
     for (auto &it : mainConfig)
     {
         std::string section = it.first;
-        if (section.compare(0, 6, "webOS.") == 0) continue;
-
         if (availableConfiguration.find(section) != availableConfiguration.end())
         {
             auto configPath = getSectionConfigPath(section);
@@ -195,6 +220,12 @@ void TelegrafController::splitMainConfig()
             writeTomlSection(configPath, section, plugin[section]);
         }
     }
+
+    std::unordered_set<std::string> plugins;
+    for (const auto & kv : availableConfiguration) {
+        plugins.insert(kv.first);
+    }
+    disableTomlSection(TELEGRAF_MAIN_CONFIG, plugins);
 }
 
 extern "C" void terminationHandler(int sig)
@@ -208,8 +239,7 @@ extern "C" void terminationHandler(int sig)
 
 pid_t TelegrafController::getRunningTelegrafPID()
 {
-
-
+    return pid_;
     return 0;
 }
 
@@ -313,6 +343,7 @@ bool TelegrafController::isRunning()
 
 tomlObject TelegrafController::getConfig()
 {
+    loadConfig();
     return _allConfig;
 }
 

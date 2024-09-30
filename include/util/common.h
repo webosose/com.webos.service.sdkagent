@@ -24,6 +24,10 @@ std::string executeCommand(std::string pszCommand, bool linefeedToSpace = false)
 
 bool fileExists(const char* filePath);
 
+std::string readTextFile(const char* filePath);
+
+void writeTextFile(const char* filePath, std::string & strBuffer);
+
 pbnjson::JValue stringToJValue(const char* rawData);
 
 #endif
