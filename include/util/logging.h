@@ -34,7 +34,7 @@
 #define SDK_LOG_DEBUG(...) \
         PmLogDebug(getServiceContext(), ##__VA_ARGS__)
 
-void logKmsg(const char *fmt, ...);
+extern "C" void logKmsg(const char *fmt, ...);
 #define SDK_KMSG_DEBUG_MSG(b, fmt, arg...) \
         if ((b))                           \
         logKmsg(fmt, ##arg)

@@ -21,6 +21,7 @@
 #include <lunaApiBaseCategory.h>
 #include "threadForInterval.h"
 #include "threadForSocket.h"
+#include "telegrafController.h"
 
 // Singleton class
 // https://henriquesd.medium.com/singleton-vs-static-class-e6b2b32ec331
@@ -46,7 +47,7 @@ public:
     }
 
     void initialize();
-    void sendToTelegraf(std::string &data);
+    void sendToTelegraf(std::string &msg);
 
     void loadInitConfig();
 

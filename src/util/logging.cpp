@@ -56,7 +56,7 @@ PmLogContext getServiceContext()
 
 // For output to kernel message.
 #define LOG_BUF_MAX 512
-void logKmsg(const char *fmt, ...)
+extern "C" void logKmsg(const char *fmt, ...)
 {
     char buf[LOG_BUF_MAX];
     va_list ap;

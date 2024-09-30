@@ -16,8 +16,9 @@
 
 #include "logging.h"
 #include "lunaApiBaseCategory.h"
+#include "common.h"
 
-#define WEBOS_CONFIG_JSON "/var/lib/com.webos.service.sdkagent/config.json"
+// #define WEBOS_CONFIG_JSON "/var/lib/com.webos.service.sdkagent/config.json"
 
 LunaApiBaseCategory::LunaApiBaseCategory() : pLSHandle(NULL),
                                              pCategory(NULL),
@@ -107,7 +108,7 @@ void LunaApiBaseCategory::LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *ms
     return;
 }
 
-void LunaApiBaseCategory::LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, char *payload)
+void LunaApiBaseCategory::LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, const char *payload)
 {
     LSError lserror;
     LSErrorInit(&lserror);
@@ -151,93 +152,4 @@ void LunaApiBaseCategory::postEvent(LSHandle *handle, void *subscribeKey, void *
     }
 
     return;
-}
-
-std::string LunaApiBaseCategory::executeCommand(std::string pszCommand, bool linefeedToSpace)
-{
-    FILE *fp = popen(pszCommand.c_str(), "r");
-    if (!fp)
-    {
-        SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error (!fp) [%d:%s]\n", errno, strerror(errno));
-        return NULL;
-    }
-
-    std::string retStr = "";
-    char *ln = NULL;
-    size_t len = 0;
-    while (getline(&ln, &len, fp) != -1)
-    {
-        if (ln == NULL)
-        {
-            SDK_LOG_INFO(MSGID_SDKAGENT, 0, "[ %s : %d ] %s( ... ), %s", __FILE__, __LINE__, __FUNCTION__, "ln == NULL");
-            continue;
-        }
-        retStr = retStr.append(ln);
-        if (retStr.at(retStr.length() - 1) == '\n')
-        {
-            retStr.pop_back();
-            if (linefeedToSpace)
-            {
-                retStr = retStr.append(" ");
-            }
-        }
-    }
-    if ((linefeedToSpace) && (!retStr.empty()) && (retStr.at(retStr.length() - 1) == ' '))
-    {
-        retStr.pop_back();
-    }
-    free(ln);
-    pclose(fp);
-    return retStr;
-}
-
-pbnjson::JValue LunaApiBaseCategory::convertStringToJson(const char *rawData)
-{
-    pbnjson::JInput input(rawData);
-    pbnjson::JSchema schema = pbnjson::JSchemaFragment("{}");
-    pbnjson::JDomParser parser;
-    if (!parser.parse(input, schema))
-    {
-        return pbnjson::JValue();
-    }
-    return parser.getDom();
-}
-
-std::mutex webOSConfigMutex;
-
-pbnjson::JValue LunaApiBaseCategory::readwebOSConfigJson()
-{
-    webOSConfigMutex.lock();
-    std::ifstream configFile(WEBOS_CONFIG_JSON);
-    std::string readAllData;
-    std::string readline;
-    if (configFile.good())
-    {
-        while (getline(configFile, readline))
-        {
-            readAllData += readline;
-        }
-        configFile.close();
-    }
-    else
-    {
-        configFile.close();
-        std::string cmd = "echo \"{}\" > ";
-        cmd = cmd.append(WEBOS_CONFIG_JSON);
-        executeCommand(std::move(cmd));
-        readAllData = "{}";
-    }
-    webOSConfigMutex.unlock();
-    return convertStringToJson((char *)(readAllData.c_str()));
-}
-
-bool LunaApiBaseCategory::writewebOSConfigJson(pbnjson::JValue webOSConfigJson)
-{
-    webOSConfigMutex.lock();
-    std::ofstream fileOut;
-    fileOut.open(WEBOS_CONFIG_JSON);
-    fileOut.write(webOSConfigJson.stringify().c_str(), webOSConfigJson.stringify().size()); // Need Styled Writer?
-    fileOut.close();
-    webOSConfigMutex.unlock();
-    return true;
 }
