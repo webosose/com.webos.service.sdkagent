@@ -17,6 +17,8 @@
 #include "logging.h"
 #include "lunaApiCollector.h"
 #include "threadForInterval.h"
+#include "common.h"
+#include "telegrafController.h"
 
 #include <map>
 #include <iomanip>
@@ -39,7 +41,7 @@ ThreadForInterval::~ThreadForInterval()
 
 bool ThreadForInterval::cb_getWebProcessSize(LSHandle *sh, LSMessage *msg, void *user_data)
 {
-    pbnjson::JValue response = LunaApiCollector::Instance()->convertStringToJson(LSMessageGetPayload(msg));
+    pbnjson::JValue response = stringToJValue(LSMessageGetPayload(msg));
 
     if (!response["returnValue"].asBool())
     {
@@ -135,9 +137,9 @@ std::string interval_cpu_usage(std::string pid)
 {
     // calculate cpu usage from interval seconds
     std::string cmd = "sed -E 's/\\([^)]+\\)/X/' \"/proc/" + pid + "/stat\" | awk '{print $14}'";
-    std::string process_utime_str = LunaApiCollector::Instance()->executeCommand(cmd);
+    std::string process_utime_str = executeCommand(cmd);
     cmd = "sed -E 's/\\([^)]+\\)/X/' \"/proc/" + pid + "/stat\" | awk '{print $15}'";
-    std::string process_stime_str = LunaApiCollector::Instance()->executeCommand(std::move(cmd));
+    std::string process_stime_str = executeCommand(std::move(cmd));
     float process_time = stringToFloat(std::move(process_utime_str)) + stringToFloat(std::move(process_stime_str));
 
     int int_pid = stringToPositiveInt(pid);
@@ -173,23 +175,23 @@ void calculateProcessMonitoring(std::string processName, std::string pid)
     // calculate memory (kB)
     // VSZ (Virtual Memory Size) (kB)
     std::string cmd = "cat /proc/" + pid + "/stat | cut -d\" \" -f23 | xargs -n 1 bash -c 'echo $(($1/1024))' args";
-    std::string VSZ = LunaApiCollector::Instance()->executeCommand(cmd);
+    std::string VSZ = executeCommand(cmd);
     sendData += ",VSZ=" + VSZ;
     // VmRSS = RssAnon + RssFile + RssSHmem (kB)
     cmd = "cat /proc/" + pid + "/status | grep '^VmRSS:' | awk '{print $2}'";
-    std::string vmRSS = LunaApiCollector::Instance()->executeCommand(cmd);
+    std::string vmRSS = executeCommand(cmd);
     sendData += ",vmRSS=" + vmRSS;
     // RSS (Resident Set Size) (kB)
     cmd = "grep -e '^Rss' /proc/" + pid + "/smaps | awk '{sum += $2} END {print sum}'";
-    std::string smaps_RSS = LunaApiCollector::Instance()->executeCommand(cmd);
+    std::string smaps_RSS = executeCommand(cmd);
     sendData += ",smaps_RSS=" + smaps_RSS;
     // PSS (Proportional Set Size) (kB)
     cmd = "grep -e '^Pss' /proc/" + pid + "/smaps | awk '{sum += $2} END {print sum}'";
-    std::string smaps_PSS = LunaApiCollector::Instance()->executeCommand(cmd);
+    std::string smaps_PSS = executeCommand(cmd);
     sendData += ",smaps_PSS=" + smaps_PSS;
     // USS (Unique Set Size) = Private_Clean + Private_Dirty (kB)
     cmd = "grep -e '^Private' /proc/" + pid + "/smaps | awk '{sum += $2} END {print sum}'";
-    std::string smaps_USS = LunaApiCollector::Instance()->executeCommand(std::move(cmd));
+    std::string smaps_USS = executeCommand(std::move(cmd));
     sendData += ",smaps_USS=" + smaps_USS;
     SDK_LOG_INFO(MSGID_SDKAGENT, 0, "sendData : %s", sendData.c_str());
     LunaApiCollector::Instance()->sendToTelegraf(sendData);
@@ -234,13 +236,13 @@ void monitoringAllProcesses(pbnjson::JValue runningWebProcesses)
 
 bool ThreadForInterval::cb_getRunningProcess(LSHandle *sh, LSMessage *msg, void *user_data)
 {
-    pbnjson::JValue response = LunaApiCollector::Instance()->convertStringToJson(LSMessageGetPayload(msg));
+    pbnjson::JValue response = stringToJValue(LSMessageGetPayload(msg));
     if (!response["returnValue"].asBool())
     {
         SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "%s returnValue is false [%d:%s]\n", __FUNCTION__, errno, strerror(errno));
         return false;
     }
-    pbnjson::JValue userDataJValue = LunaApiCollector::Instance()->convertStringToJson((char *)user_data);
+    pbnjson::JValue userDataJValue = stringToJValue((char*)user_data);
     pbnjson::JValue process_name = userDataJValue["process_name"];
     if (!process_name.isArray())
     {
@@ -273,7 +275,7 @@ bool ThreadForInterval::cb_getRunningProcess(LSHandle *sh, LSMessage *msg, void 
         {
             std::string processNameStr = process_name[i].asString();
             std::string cmd = "ps -fC " + processNameStr + " | grep " + processNameStr + " | awk '{print $2}'";
-            std::string pid = LunaApiCollector::Instance()->executeCommand(std::move(cmd));
+            std::string pid = executeCommand(std::move(cmd));
             calculateProcessMonitoring(std::move(processNameStr), std::move(pid));
         }
     }
@@ -283,25 +285,22 @@ bool ThreadForInterval::cb_getRunningProcess(LSHandle *sh, LSMessage *msg, void 
     return true;
 }
 
-bool needUpdateTelegrafAgentInterval(std::string serviceLog)
+bool needUpdateTelegrafAgentInterval()
 {
+    // update for the first time
     if (configIntervalSecond <= 0) return true;
 
     // check if telegraf is recently started. If yes -> update interval
+    if (TelegrafController::getInstance()->elapsedFromLastStartedTime() <= 60) {
+        return true;
+    }
 
-    // serviceLog is result of command: systemctl status telegraf -l | grep "Active: active (running)"
-    // example serviceLog:  Active: active (running) since Thu 2024-06-06 01:35:21 PDT; 2s ago
-
-    serviceLog = serviceLog.substr(serviceLog.find(";") + 2);
-    serviceLog = serviceLog.substr(0, serviceLog.find(" "));
-
-    // just started within 60s ago
-    return (serviceLog.find("s") != std::string::npos);
+    return false;
 }
 
 int ThreadForInterval::getTelegrafAgentInterval()
 {
-    std::string cmdResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Interval:\"");
+    std::string cmdResult = executeCommand("systemctl status telegraf -l | grep \"Interval:\"");
     if (!cmdResult.empty())
     {
         cmdResult = cmdResult.substr(cmdResult.find("Interval:"));
@@ -349,13 +348,11 @@ gpointer ThreadForInterval::intervalHandle_process(gpointer data)
     while (intervalHandle != NULL)
     {
         gpointer msg = g_async_queue_try_pop(intervalHandle->queue);
-        if ((msg) && (msg == GINT_TO_POINTER(INTERVAL_THREAD_MSG_STOP)))
-            break;
-
-        std::string telegrafLog = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Active: active (running)\"");
-        if (!telegrafLog.empty()) // if telegraf is active
+        if ((msg) && (msg == GINT_TO_POINTER(INTERVAL_THREAD_MSG_STOP))) break;
+            
+        if (TelegrafController::getInstance()->isRunning())
         {
-            if (needUpdateTelegrafAgentInterval(std::move(telegrafLog)))
+            if (needUpdateTelegrafAgentInterval())
             {
                 int newIntervalInSecond = getTelegrafAgentInterval();
                 if ((newIntervalInSecond != -1) && (configIntervalSecond != newIntervalInSecond))
@@ -369,42 +366,42 @@ gpointer ThreadForInterval::intervalHandle_process(gpointer data)
             {
                 intervalCountDown = configIntervalSecond;
 
-                pbnjson::JValue tmpValue = LunaApiCollector::Instance()->readwebOSConfigJson();
-                if (tmpValue.hasKey("webOS.webProcessSize") && (tmpValue["webOS.webProcessSize"]).hasKey("enabled") && ((tmpValue["webOS.webProcessSize"])["enabled"]).asBool())
-                {
-                    LSError lserror;
-                    LSErrorInit(&lserror);
-                    if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
-                                "luna://com.webos.service.webappmanager/getWebProcessSize",
-                                "{}",
-                                ThreadForInterval::cb_getWebProcessSize,
-                                NULL,
-                                NULL,
-                                &lserror))
-                    {
-                        LSErrorPrint(&lserror, stderr);
-                        LSErrorFree(&lserror);
-                    }
-                }
+                // pbnjson::JValue tmpValue = LunaApiCollector::Instance()->readwebOSConfigJson();
+                // if (tmpValue.hasKey("webOS.webProcessSize") && (tmpValue["webOS.webProcessSize"]).hasKey("enabled") && ((tmpValue["webOS.webProcessSize"])["enabled"]).asBool())
+                // {
+                //     LSError lserror;
+                //     LSErrorInit(&lserror);
+                //     if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
+                //                 "luna://com.webos.service.webappmanager/getWebProcessSize",
+                //                 "{}",
+                //                 ThreadForInterval::cb_getWebProcessSize,
+                //                 NULL,
+                //                 NULL,
+                //                 &lserror))
+                //     {
+                //         LSErrorPrint(&lserror, stderr);
+                //         LSErrorFree(&lserror);
+                //     }
+                // }
 
-                if (tmpValue.hasKey("webOS.processMonitoring") && (tmpValue["webOS.processMonitoring"]).hasKey("enabled") && ((tmpValue["webOS.processMonitoring"])["enabled"]).asBool())
-                {
-                    pbnjson::JValue processMonitoringJValue = tmpValue["webOS.processMonitoring"];
-                    LSError lserror;
-                    LSErrorInit(&lserror);
-                    const char *ctx = strdup(processMonitoringJValue.stringify().c_str());
-                    if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
-                                "luna://com.webos.applicationManager/running",
-                                "{}",
-                                ThreadForInterval::cb_getRunningProcess,
-                                (void *)ctx,
-                                NULL,
-                                &lserror))
-                    {
-                        LSErrorPrint(&lserror, stderr);
-                        LSErrorFree(&lserror);
-                    }
-                }
+                // if (tmpValue.hasKey("webOS.processMonitoring") && (tmpValue["webOS.processMonitoring"]).hasKey("enabled") && ((tmpValue["webOS.processMonitoring"])["enabled"]).asBool())
+                // {
+                //     pbnjson::JValue processMonitoringJValue = tmpValue["webOS.processMonitoring"];
+                //     LSError lserror;
+                //     LSErrorInit(&lserror);
+                //     const char *ctx = strdup(processMonitoringJValue.stringify().c_str());
+                //     if (!LSCall(LunaApiCollector::Instance()->pLSHandle,
+                //                 "luna://com.webos.applicationManager/running",
+                //                 "{}",
+                //                 ThreadForInterval::cb_getRunningProcess,
+                //                 (void *)ctx,
+                //                 NULL,
+                //                 &lserror))
+                //     {
+                //         LSErrorPrint(&lserror, stderr);
+                //         LSErrorFree(&lserror);
+                //     }
+                // }
             }
             else
             {

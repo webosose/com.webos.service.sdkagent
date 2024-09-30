@@ -1,7 +1,26 @@
+// Copyright (c) 2024 LG Electronics, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "tomlParser.h"
+#include "common.h"
 #include <fstream>
 #include <iostream> // to be removed
 #include <sstream>
+#include <unordered_set>
+#include <json-c/json.h>
 
 std::string trim_string(const std::string &str, int first, int last)
 {
@@ -143,6 +162,62 @@ void writeTomlFile(const std::string &filePath, const tomlObject &obj)
     fp.close();
 }
 
+void disableTomlSection(const char * filePath, const std::unordered_set<std::string> &sections)
+{
+    std::string strBuffer = readTextFile(filePath);
+    if (strBuffer.empty()) return;
+
+    std::string section;
+    bool commentOut = false;
+
+    size_t currPos = 0;
+    size_t lineBegPos = 0;
+    bool not_end_of_file = true;
+
+    while (lineBegPos < strBuffer.size())
+    {
+        auto pos = strBuffer.find_first_not_of(' ', currPos);
+        lineBegPos = strBuffer.find('\n', currPos+1);
+        if (lineBegPos == std::string::npos) {
+            not_end_of_file = false;
+            lineBegPos = strBuffer.size();
+        } else {
+            lineBegPos++;
+        }
+       
+        if (pos < lineBegPos) {
+
+            // new section found
+            if (strBuffer[pos] == '[') {
+                section = "";
+                auto sb = strBuffer.find_first_not_of("[", pos + 1);
+                size_t se = sb;
+                while ((se < strBuffer.size()) && (strBuffer[se] != ']')) se++;
+                section = strBuffer.substr(sb, se - sb);
+
+                if (sections.find(section) != sections.end()) {
+                    commentOut = true;
+                    strBuffer.insert(currPos, "# ");
+                    lineBegPos += 2;
+                }
+                else {
+                    commentOut = false;
+                }
+            }
+            else {
+                if (commentOut) {
+                    strBuffer.insert(currPos, "# ");
+                    lineBegPos += 2;
+                }
+            }
+        }
+
+        currPos = lineBegPos;
+    }
+
+    writeTextFile(filePath, strBuffer);
+}
+
 std::string fixDoubleForwardSlash(std::string str)
 {
     std::string token; //    92 \       47 /
@@ -267,23 +342,3 @@ std::string tomlObjectToJsonString(const tomlObject &obj, const std::string &ini
 //         fp.close();
 //     }
 // }
-
-bool fileExists(const char * filePath) {
-    std::ifstream fp(filePath);
-    bool ret = true;
-    if (!fp || (fp.fail())) ret = false;
-    fp.close();
-    return ret;
-}
-
-pbnjson::JValue stringToJValue(const char *rawData)
-{
-    pbnjson::JInput input(rawData);
-    pbnjson::JSchema schema = pbnjson::JSchemaFragment("{}");
-    pbnjson::JDomParser parser;
-    if (!parser.parse(input, schema))
-    {
-        return pbnjson::JValue();
-    }
-    return parser.getDom();
-}

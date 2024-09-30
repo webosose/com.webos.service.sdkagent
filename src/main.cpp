@@ -19,7 +19,7 @@
 
 GMainLoop *mainLoop;
 
-void signalHandler(int signal)
+extern "C" void signalHandler(int signal)
 {
     switch (signal)
     {
@@ -47,7 +47,7 @@ void signalHandler(int signal)
     }
 }
 
-void registSignalHandler()
+extern "C" void registSignalHandler()
 {
     /*
      * Register a function to be able to gracefully handle termination signals

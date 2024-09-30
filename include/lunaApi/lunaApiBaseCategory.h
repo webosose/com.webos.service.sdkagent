@@ -26,12 +26,7 @@ class LunaApiBaseCategory
 {
 public:
     ~LunaApiBaseCategory();
-
     bool initLunaServiceCategory(LSHandle *);
-    std::string executeCommand(std::string pszCommand, bool linefeedToSpace = false);
-    pbnjson::JValue convertStringToJson(const char *rawData);
-    pbnjson::JValue readwebOSConfigJson();
-    bool writewebOSConfigJson(pbnjson::JValue);
 
     LSHandle *pLSHandle;
 
@@ -45,7 +40,7 @@ protected:
     void LSMessageReplyErrorInvalidConfigurations(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *msg);
-    void LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, char *payload);
+    void LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, const char *payload);
 
     static void postEvent(LSHandle *handle, void *subscribeKey, void *payload);
 };
