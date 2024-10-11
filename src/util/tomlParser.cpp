@@ -22,60 +22,6 @@
 #include <unordered_set>
 #include <json-c/json.h>
 
-std::string trim_string(const std::string &str, int first, int last)
-{
-    int n = (int)str.size();
-    if ((first >= n) || (last < 0))
-        return "";
-    while ((first < n) && (str[first] == ' '))
-        first++;
-    while ((last >= 0) && (str[last] == ' '))
-        last--;
-    if (first > last)
-        return "";
-    return str.substr(first, last - first + 1);
-}
-
-std::string trim_string(const std::string &str)
-{
-    int n = (int)str.size();
-    int first = 0;
-    int last = n - 1;
-
-    if ((first >= n) || (last < 0))
-        return "";
-    while ((first < n) && (str[first] == ' '))
-        first++;
-    while ((last >= 0) && (str[last] == ' '))
-        last--;
-    if (first > last)
-        return "";
-    return str.substr(first, last - first + 1);
-}
-
-std::string removeAllSpaces(std::string str)
-{
-    size_t pos = 0;
-    char locked = 0;
-    for (size_t i = 0; i < str.size(); i++)
-    {
-        if (locked) {
-            str[pos++] = str[i];
-        }
-        else {
-            if (str[i] != ' ') {
-                str[pos++] = str[i];
-            }
-        }
-
-        if (str[i] == '\"') {
-            locked = 1 - locked;
-        }
-    }
-    str.erase(str.begin() + pos, str.end());
-    return str;
-}
-
 // just a toml reader version for use in sdkagent service, not for general toml parsing
 tomlObject readTomlFile(std::string filePath)
 {
@@ -172,14 +118,12 @@ void disableTomlSection(const char * filePath, const std::unordered_set<std::str
 
     size_t currPos = 0;
     size_t lineBegPos = 0;
-    bool not_end_of_file = true;
 
     while (lineBegPos < strBuffer.size())
     {
         auto pos = strBuffer.find_first_not_of(' ', currPos);
         lineBegPos = strBuffer.find('\n', currPos+1);
         if (lineBegPos == std::string::npos) {
-            not_end_of_file = false;
             lineBegPos = strBuffer.size();
         } else {
             lineBegPos++;

@@ -37,9 +37,11 @@ protected:
     LSMethod *pMethods;
 
     void LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg);
-    void LSMessageReplyErrorInvalidConfigurations(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *msg);
+    void LSMessageReplyErrorInvalidConfigurations(LSHandle *sh, LSMessage *msg);
+    void LSMessageReplyErrorCollectorIsRunning(LSHandle *sh, LSMessage *msg);
+    void LSMessageReplyErrorDevModeDisable(LSHandle *sh, LSMessage *msg);
     void LSMessageReplyPayload(LSHandle *sh, LSMessage *msg, const char *payload);
 
     static void postEvent(LSHandle *handle, void *subscribeKey, void *payload);

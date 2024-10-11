@@ -23,13 +23,14 @@
 #include <string>
 #include <pbnjson.hpp>
 #include "tomlParser.h"
+#include "errorCode.h"
 
 class TelegrafController {
 
 public:
     static inline TelegrafController * m_pTelegrafInstancePtr = nullptr;
     static inline std::mutex m_pMutex;
-    static inline std::mutex webOSConfigMutex;
+    // static inline std::mutex webOSConfigMutex;
     static inline pid_t pid_ {-1};
     static inline std::chrono::time_point<std::chrono::system_clock> lastStartedTime;  
     static inline tomlObject _allConfig {};
@@ -44,19 +45,12 @@ private:
     void splitMainConfig();
     bool updateSectionConfig(const std::string &section, tomlObject &inputConfig);
     void updateWebOSConfig(tomlObject &inputConfig);
-    void updateProcstatConfig(pbnjson::JValue webOSConfigJson);
-
-private:
+    void updateProcstatConfig(const pbnjson::JValue & webOSConfigJson);
+    
     static void loadConfig();
-
-private:
-    pbnjson::JValue readwebOSConfigJson();
-    bool writewebOSConfigJson(pbnjson::JValue);
     
 public:
     bool checkInputConfig(tomlObject &inputConfig);
-    bool updateConfig(tomlObject &inputConfig);
-    void saveConfig();
 
 public:
 
@@ -89,11 +83,13 @@ public:
     int getRunningTelegrafPID();
     double elapsedFromLastStartedTime();
 
-    static void start();
-    static void stop();
-    static void restart();
+    static SDKError start();
+    static SDKError stop();
+    static SDKError restart();
     static bool isRunning();
     tomlObject getConfig();
+
+    bool setConfig(tomlObject &inputConfig);
 };
 
 #endif

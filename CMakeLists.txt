@@ -68,6 +68,7 @@ set(SRC_LIST
     ${SRC_DIR}/util/logging.cpp
     ${SRC_DIR}/util/tomlParser.cpp
     ${SRC_DIR}/util/common.cpp
+    ${SRC_DIR}/util/errorCode.cpp
     ${SRC_DIR}/main.cpp
 )
 

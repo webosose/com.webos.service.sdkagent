@@ -20,14 +20,32 @@
 #include <string>
 #include <pbnjson.hpp>
 
-std::string executeCommand(std::string pszCommand, bool linefeedToSpace = false);
+std::string executeCommand(const std::string & pszCommand, bool linefeedToSpace = false);
+
+std::string trim_string(const std::string &str, int first, int last);
+
+std::string trim_string(const std::string &str);
+
+bool is_number(const std::string &s);
+
+int string_to_positive_int(const std::string &sPID);
+
+float string_to_float(const char * s);
 
 bool fileExists(const char* filePath);
+
+bool isDevMode();
+
+std::string removeAllSpaces(std::string str);
 
 std::string readTextFile(const char* filePath);
 
 void writeTextFile(const char* filePath, std::string & strBuffer);
 
 pbnjson::JValue stringToJValue(const char* rawData);
+
+pbnjson::JValue readWebOSJsonConfig();
+
+void writeWebOSConfigJson(pbnjson::JValue);
 
 #endif

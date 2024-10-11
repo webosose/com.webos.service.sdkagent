@@ -17,8 +17,7 @@
 #include "logging.h"
 #include "lunaApiBaseCategory.h"
 #include "common.h"
-
-// #define WEBOS_CONFIG_JSON "/var/lib/com.webos.service.sdkagent/config.json"
+#include "errorCode.h"
 
 LunaApiBaseCategory::LunaApiBaseCategory() : pLSHandle(NULL),
                                              pCategory(NULL),
@@ -48,27 +47,12 @@ bool LunaApiBaseCategory::initLunaServiceCategory(LSHandle *lsHandle)
     return true;
 }
 
-void LunaApiBaseCategory::LSMessageReplyErrorInvalidConfigurations(LSHandle *sh, LSMessage *msg)
-{
-    LSError lserror;
-    LSErrorInit(&lserror);
-
-    bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":4,\"errorText\":\"Invalid configurations.\"}", NULL);
-    if (!retVal)
-    {
-        LSErrorPrint(&lserror, stderr);
-        LSErrorFree(&lserror);
-    }
-
-    return;
-}
-
 void LunaApiBaseCategory::LSMessageReplyErrorUnknown(LSHandle *sh, LSMessage *msg)
 {
     LSError lserror;
     LSErrorInit(&lserror);
 
-    bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":1,\"errorText\":\"Unknown error.\"}", NULL);
+    bool retVal = LSMessageReply(sh, msg, getErrorMessage(SDKError::UNKNOWN_ERROR), NULL);
     if (!retVal)
     {
         LSErrorPrint(&lserror, stderr);
@@ -83,7 +67,7 @@ void LunaApiBaseCategory::LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessa
     LSError lserror;
     LSErrorInit(&lserror);
 
-    bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":2,\"errorText\":\"Invalid parameters.\"}", NULL);
+    bool retVal = LSMessageReply(sh, msg, getErrorMessage(SDKError::INVALID_PARAMETERS), NULL);
     if (!retVal)
     {
         LSErrorPrint(&lserror, stderr);
@@ -98,7 +82,52 @@ void LunaApiBaseCategory::LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *ms
     LSError lserror;
     LSErrorInit(&lserror);
 
-    bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":3,\"errorText\":\"Malformed json.\"}", NULL);
+    bool retVal = LSMessageReply(sh, msg, getErrorMessage(SDKError::MALFORMED_JSON), NULL);
+    if (!retVal)
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+    }
+
+    return;
+}
+
+void LunaApiBaseCategory::LSMessageReplyErrorInvalidConfigurations(LSHandle *sh, LSMessage *msg)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    bool retVal = LSMessageReply(sh, msg, getErrorMessage(SDKError::INVALID_CONFIGURATIONS), NULL);
+    if (!retVal)
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+    }
+
+    return;
+}
+
+void LunaApiBaseCategory::LSMessageReplyErrorCollectorIsRunning(LSHandle *sh, LSMessage *msg)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    bool retVal = LSMessageReply(sh, msg, getErrorMessage(SDKError::COLLECTOR_IS_RUNNING), NULL);
+    if (!retVal)
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+    }
+
+    return;
+}
+
+void LunaApiBaseCategory::LSMessageReplyErrorDevModeDisable(LSHandle *sh, LSMessage *msg)
+{
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    bool retVal = LSMessageReply(sh, msg, getErrorMessage(SDKError::DEVMODE_DISABLE), NULL);
     if (!retVal)
     {
         LSErrorPrint(&lserror, stderr);

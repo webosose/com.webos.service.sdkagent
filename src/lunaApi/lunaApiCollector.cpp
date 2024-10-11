@@ -28,7 +28,7 @@
 LunaApiCollector *LunaApiCollector::_instance = nullptr;
 
 #define TELEGRAF_CONFIG_DIR "/var/lib/com.webos.service.sdkagent/telegraf/telegraf.d/"
-#define TELEGRAF_MAIN_CONFIG "/var/lib/com.webos.service.sdkagent/telegraf.d/telegraf.conf"
+#define TELEGRAF_MAIN_CONFIG "/var/lib/com.webos.service.sdkagent/telegraf/telegraf.conf"
 #define START_ON_BOOT_FLAG "/var/lib/com.webos.service.sdkagent/startOnBoot"
 
 // luna API lists
@@ -78,10 +78,14 @@ bool LunaApiCollector::start(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    TelegrafController::getInstance()->start();
-    Instance()->LSMessageReplyPayload(sh, msg, NULL);
-
-    return true;
+    if (TelegrafController::getInstance()->start() == SDKError::SUCCESS) {
+        Instance()->LSMessageReplyPayload(sh, msg, NULL);
+        return true;
+    }
+    else {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
 }
 
 // luna-send -f -n 1 luna://com.webos.service.sdkagent/collector/stop '{}'
@@ -93,10 +97,14 @@ bool LunaApiCollector::stop(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    TelegrafController::getInstance()->stop();
-    Instance()->LSMessageReplyPayload(sh, msg, NULL);
-
-    return true;
+    if (TelegrafController::getInstance()->stop() == SDKError::DEVMODE_DISABLE) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+    else {
+        Instance()->LSMessageReplyPayload(sh, msg, NULL);
+        return true;        
+    }
 }
 
 // luna-send -f -n 1 luna://com.webos.service.sdkagent/collector/restart '{}'
@@ -108,8 +116,14 @@ bool LunaApiCollector::restart(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    TelegrafController::getInstance()->restart();
-    Instance()->LSMessageReplyPayload(sh, msg, NULL);
+    if (TelegrafController::getInstance()->restart() == SDKError::SUCCESS) {
+        Instance()->LSMessageReplyPayload(sh, msg, NULL);
+        return true;
+    }
+    else {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
 
     return true;
 }
@@ -123,6 +137,11 @@ bool LunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
+    if (!isDevMode()) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+
     pbnjson::JValue paramObj = stringToJValue(LSMessageGetPayload(msg));
     if (!paramObj.hasKey("enable") || !paramObj["enable"].isBoolean())
     {
@@ -132,7 +151,7 @@ bool LunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data)
 
     bool isEnable = paramObj["enable"].asBool();
     std::string cmd = isEnable ? "touch " + std::string(START_ON_BOOT_FLAG) : "rm " + std::string(START_ON_BOOT_FLAG);
-    executeCommand(cmd.c_str());
+    executeCommand(cmd);
     Instance()->LSMessageReplyPayload(sh, msg, NULL);
 
     return true;
@@ -167,6 +186,11 @@ bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
+    if (!isDevMode()) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+
     tomlObject telegrafConfig = TelegrafController::getInstance()->getConfig();
 
     std::string replyConfig = tomlObjectToJsonString(telegrafConfig, std::string("    "));
@@ -178,10 +202,15 @@ bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
 
 bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
 {
+    if (!isDevMode()) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+
     if (TelegrafController::getInstance()->isRunning())
     {
         // cannot set the config while telegraf is running
-        bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":5,\"errorText\":\"Collector is active (running).\"}", NULL);
+        bool retVal = LSMessageReply(sh, msg, getErrorMessage(SDKError::COLLECTOR_IS_RUNNING), NULL);
         if (!retVal)
         {
             LSError lserror;
@@ -209,7 +238,7 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    if (!TelegrafController::getInstance()->updateConfig(inputConfig))
+    if (!TelegrafController::getInstance()->setConfig(inputConfig))
     {
         Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
         return false;
@@ -285,7 +314,12 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    std::string tmpCmd = "telegraf";
+    if (!isDevMode()) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+
+    std::string tmpCmd = "telegraf -config " + std::string(TELEGRAF_MAIN_CONFIG) + " -config-directory " + std::string(TELEGRAF_CONFIG_DIR);
     pbnjson::JValue paramObj = stringToJValue(LSMessageGetPayload(msg));
     std::string tmpArguments = " --input-filter ";
     if (paramObj.objectSize() > 0)
@@ -305,7 +339,7 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
     tmpCmd += " --test 2>&1";
 
     pbnjson::JValue reply = pbnjson::Object();
-    std::string cmdResult = executeCommand(std::move(tmpCmd));
+    std::string cmdResult = executeCommand(tmpCmd);
     if (cmdResult.find("E! [telegraf] Error") != std::string::npos)
     {
         Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
