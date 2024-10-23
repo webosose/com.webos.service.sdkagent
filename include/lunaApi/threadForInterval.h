@@ -51,6 +51,9 @@ private:
     static bool cb_getRunningProcess(LSHandle *sh, LSMessage *msg, void *user_data);
 
     static int getTelegrafAgentInterval();
+
+    static void collectWebProcessSize(pbnjson::JValue & webOSConfig);
+    static void collectProcessesData(pbnjson::JValue & webOSConfig);
 };
 
 #endif

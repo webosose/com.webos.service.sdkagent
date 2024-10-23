@@ -19,14 +19,17 @@
 #include "threadForSocket.h"
 #include "lunaApiCollector.h"
 #include "tomlParser.h"
+#include "common.h"
+#include "telegrafController.h"
 #include <algorithm>
+#include <json-c/json.h>
+#include <pbnjson.hpp>
 
-LunaApiCollector *LunaApiCollector::_instance = NULL;
+LunaApiCollector *LunaApiCollector::_instance = nullptr;
 
-#define SDKAGENT_INIT_CONFIG "/var/lib/com.webos.service.sdkagent/initConfig.json"
-// #define TELEGRAF_CONFIG_DIR "/etc/telegraf/telegraf.d/"
-#define TELEGRAF_CONFIG_DIR "/var/lib/com.webos.service.sdkagent/telegraf.d/"
-#define TELEGRAF_MAIN_CONFIG "/etc/telegraf/telegraf.conf"
+#define TELEGRAF_CONFIG_DIR "/var/lib/com.webos.service.sdkagent/telegraf/telegraf.d/"
+#define TELEGRAF_MAIN_CONFIG "/var/lib/com.webos.service.sdkagent/telegraf/telegraf.conf"
+#define START_ON_BOOT_FLAG "/var/lib/com.webos.service.sdkagent/startOnBoot"
 
 // luna API lists
 const LSMethod LunaApiCollector::collectorMethods[] = {
@@ -43,63 +46,11 @@ const LSMethod LunaApiCollector::collectorMethods[] = {
     {NULL, NULL},
 };
 
-// available set configurations
-// Protect the other configurations of telegraf
-std::unordered_map<std::string, std::unordered_set<std::string>> availableConfiguration =
-    {
-        {"agent", {"interval", "flush_interval"}},
-        {"outputs.influxdb", {"database", "urls"}},
-        {"webOS.webProcessSize", {"enabled"}},
-        {"webOS.processMonitoring", {"process_name", "enabled"}}};
-
-std::string getSectionConfigPath(std::string sectionName)
+// Called when starting the service
+void LunaApiCollector::initialize()
 {
-    if (availableConfiguration.find(sectionName) != availableConfiguration.end())
-    {
-        return TELEGRAF_CONFIG_DIR + sectionName + ".conf";
-    }
-    else
-        return "";
-}
-
-void LunaApiCollector::loadInitConfig()
-{
-    std::ifstream fp(SDKAGENT_INIT_CONFIG);
-    if (!fp || fp.fail())
-    {
-        fp.close();
-        return;
-    }
-
-    std::string strBuffer;
-    fp.seekg(0, std::ios::end);
-    strBuffer.reserve(fp.tellg());
-    fp.seekg(0, std::ios::beg);
-    strBuffer.assign(
-        (std::istreambuf_iterator<char>(fp)),
-        std::istreambuf_iterator<char>()
-    );
-
-    auto initConfig = json_tokener_parse(strBuffer.c_str());
-    if (!initConfig)
-    {
-        // need SDK_LOG
-        return;
-    }
-
-    availableConfiguration.clear();
-    json_object *availConfig = NULL;
-    if (json_object_object_get_ex(initConfig, "availableConfiguration", &availConfig))
-    {
-        json_object_object_foreach(availConfig, section, configs)
-        {
-            availableConfiguration[section] = {};
-            for (size_t i = 0; i < json_object_array_length(configs); i++)
-            {
-                json_object *val = json_object_array_get_idx(configs, i);
-                availableConfiguration[section].insert(json_object_to_json_string(val));
-            }
-        }
+    if (fileExists(START_ON_BOOT_FLAG)) {
+        TelegrafController::getInstance()->start();
     }
 }
 
@@ -107,8 +58,6 @@ LunaApiCollector::LunaApiCollector()
 {
     pCategory = "/collector";
     pMethods = (LSMethod *)collectorMethods;
-
-    loadInitConfig();
 
     pThreadForInterval = new ThreadForInterval();
     pThreadForSocket = new ThreadForSocket();
@@ -129,10 +78,14 @@ bool LunaApiCollector::start(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    Instance()->executeCommand("systemctl start telegraf");
-    Instance()->LSMessageReplyPayload(sh, msg, NULL);
-
-    return true;
+    if (TelegrafController::getInstance()->start() == SDKError::SUCCESS) {
+        Instance()->LSMessageReplyPayload(sh, msg, NULL);
+        return true;
+    }
+    else {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
 }
 
 // luna-send -f -n 1 luna://com.webos.service.sdkagent/collector/stop '{}'
@@ -144,10 +97,14 @@ bool LunaApiCollector::stop(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    Instance()->executeCommand("systemctl stop telegraf");
-    Instance()->LSMessageReplyPayload(sh, msg, NULL);
-
-    return true;
+    if (TelegrafController::getInstance()->stop() == SDKError::DEVMODE_DISABLE) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+    else {
+        Instance()->LSMessageReplyPayload(sh, msg, NULL);
+        return true;        
+    }
 }
 
 // luna-send -f -n 1 luna://com.webos.service.sdkagent/collector/restart '{}'
@@ -159,8 +116,14 @@ bool LunaApiCollector::restart(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    Instance()->executeCommand("systemctl restart telegraf");
-    Instance()->LSMessageReplyPayload(sh, msg, NULL);
+    if (TelegrafController::getInstance()->restart() == SDKError::SUCCESS) {
+        Instance()->LSMessageReplyPayload(sh, msg, NULL);
+        return true;
+    }
+    else {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
 
     return true;
 }
@@ -174,6 +137,11 @@ bool LunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
+    if (!isDevMode()) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+
     pbnjson::JValue paramObj = stringToJValue(LSMessageGetPayload(msg));
     if (!paramObj.hasKey("enable") || !paramObj["enable"].isBoolean())
     {
@@ -182,16 +150,8 @@ bool LunaApiCollector::startOnBoot(LSHandle *sh, LSMessage *msg, void *data)
     }
 
     bool isEnable = paramObj["enable"].asBool();
-    if (isEnable)
-    {
-        // Create configuration file for startOnBoot
-        Instance()->executeCommand("touch /var/lib/com.webos.service.sdkagent/startOnBoot");
-    }
-    else
-    {
-        // Remove configuration file for startOnBoot
-        Instance()->executeCommand("rm /var/lib/com.webos.service.sdkagent/startOnBoot");
-    }
+    std::string cmd = isEnable ? "touch " + std::string(START_ON_BOOT_FLAG) : "rm " + std::string(START_ON_BOOT_FLAG);
+    executeCommand(cmd);
     Instance()->LSMessageReplyPayload(sh, msg, NULL);
 
     return true;
@@ -208,147 +168,49 @@ bool LunaApiCollector::getStatus(LSHandle *sh, LSMessage *msg, void *data)
 
     pbnjson::JValue reply = pbnjson::Object();
     reply.put("returnValue", true);
-    reply.put("status", Instance()->executeCommand("systemctl is-active telegraf"));
-    std::ifstream startOnBoot("/var/lib/com.webos.service.sdkagent/startOnBoot");
-    reply.put("startOnBoot", startOnBoot.good());
-    startOnBoot.close();
+    std::string status = TelegrafController::getInstance()->isRunning() ? "active" : "inactive";
+    reply.put("status", status);
+    reply.put("startOnBoot", fileExists(START_ON_BOOT_FLAG));
 
-    Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
-
-    return true;
-}
-
-// if need process filtering except intput process name
-bool checkProcessName(std::string processName)
-{
-    std::string pid = LunaApiCollector::Instance()->executeCommand("pgrep -f " + processName, true);
-    return !pid.empty();
-}
-
-// write to /etc/telegrad/telegrad.d/procstat.conf
-void updateProcstatConfig(pbnjson::JValue tmpConfigJson)
-{
-    if (tmpConfigJson.hasKey("webOS.processMonitoring") &&
-        (tmpConfigJson["webOS.processMonitoring"]).hasKey("enabled") &&
-        ((tmpConfigJson["webOS.processMonitoring"])["enabled"]).asBool())
-    {
-        std::string processList = "";
-        pbnjson::JValue process_name = (tmpConfigJson["webOS.processMonitoring"])["process_name"];
-        if (process_name.isArray())
-        {
-            for (int i = 0; i < process_name.arraySize(); i++)
-            {
-                if (checkProcessName(process_name[i].asString()))
-                {
-                    processList += process_name[i].asString() + "|";
-                }
-            }
-            if ((!processList.empty()) && (processList.at(processList.length() - 1) == '|'))
-            {
-                processList.pop_back();
-            }
-
-            if (processList.length() > 0)
-            {
-                std::string procstatCmd = "echo -e '[[inputs.procstat]]\npid_tag=true\npattern=\"" + processList + "\"' > /etc/telegraf/telegraf.d/procstat.conf";
-                LunaApiCollector::Instance()->executeCommand(std::move(procstatCmd));
-                return;
-            }
-        }
-    }
-    LunaApiCollector::Instance()->executeCommand("rm -fr /etc/telegraf/telegraf.d/procstat.conf");
-}
-
-bool updateSectionConfig(const std::string &section, tomlObject &inputConfig)
-{
-    if (section.compare(0, 6, "webOS.") == 0)
-        return true;
-
-    std::string configPath = getSectionConfigPath(section);
-    if (configPath.empty())
-        return true;
-
-    tomlObject currentConfig = readTomlFile(configPath.c_str());
-
-    // remove all the current configuration, leave it blank
-    if (inputConfig[section].empty())
-    {
-        writeTomlSection(configPath, section, inputConfig[section]);
-    }
-    else
-    {
-        for (auto &cfg : inputConfig[section])
-        {
-            currentConfig[section][cfg.first] = cfg.second;
-        }
-        writeTomlSection(configPath, section, currentConfig[section]);
-    }
-    return true;
-}
-
-void updateWebOSConfig(tomlObject &inputConfig)
-{
-    pbnjson::JValue webOSConfigJson = LunaApiCollector::Instance()->readwebOSConfigJson();
-
-    for (auto &section : inputConfig)
-    {
-        if (section.first.compare(0, 6, "webOS.") == 0)
-        {
-            webOSConfigJson.put(section.first, pbnjson::Object());
-            for (auto &configParam : section.second)
-            {
-                webOSConfigJson[section.first].put(configParam.first, stringToJValue(configParam.second.c_str()));
-            }
-        }
-    }
-    updateProcstatConfig(webOSConfigJson);
-
-    LunaApiCollector::Instance()->writewebOSConfigJson(std::move(webOSConfigJson));
-}
-
-bool updateConfig(tomlObject &inputConfig)
-{
-    for (auto &it : inputConfig)
-    {
-        updateSectionConfig(it.first, inputConfig);
-    }
-    updateWebOSConfig(inputConfig);
+    Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
 
     return true;
 }
 
-bool checkInputConfig(tomlObject &inputConfig)
+// luna-send -f -n 1 luna://com.webos.service.sdkagent/collector/getConfig '{}'
+bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
 {
-    if (inputConfig.empty())
+    if (!json_tokener_parse(LSMessageGetPayload(msg)))
+    {
+        Instance()->LSMessageReplyErrorBadJSON(sh, msg);
         return false;
-    for (auto &section : inputConfig)
-    {
-        auto &sectionName = section.first;
-        if (availableConfiguration.find(sectionName) == availableConfiguration.end())
-            return false;
-        for (auto &config : section.second)
-        {
-            auto &configName = config.first;
-            if (availableConfiguration[sectionName].find(configName) == availableConfiguration[sectionName].end())
-                return false;
-        }
     }
 
-    return true;
-}
+    if (!isDevMode()) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
 
-bool telegrafIsActive()
-{
-    std::string stateResult = LunaApiCollector::Instance()->executeCommand("systemctl status telegraf -l | grep \"Active: active (running)\"");
-    return (!stateResult.empty());
+    tomlObject telegrafConfig = TelegrafController::getInstance()->getConfig();
+
+    std::string replyConfig = tomlObjectToJsonString(telegrafConfig, std::string("    "));
+    replyConfig = "{\n    \"returnValue\": true,\n    \"config\": " + replyConfig + "\n}";
+
+    Instance()->LSMessageReplyPayload(sh, msg, replyConfig.c_str());
+    return true;
 }
 
 bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
 {
-    if (telegrafIsActive())
+    if (!isDevMode()) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+
+    if (TelegrafController::getInstance()->isRunning())
     {
         // cannot set the config while telegraf is running
-        bool retVal = LSMessageReply(sh, msg, "{\"returnValue\":false,\"errorCode\":5,\"errorText\":\"Collector is active (running).\"}", NULL);
+        bool retVal = LSMessageReply(sh, msg, getErrorMessage(SDKError::COLLECTOR_IS_RUNNING), NULL);
         if (!retVal)
         {
             LSError lserror;
@@ -369,79 +231,20 @@ bool LunaApiCollector::setConfig(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    if (!checkInputConfig(inputConfig))
+    // check if all configurations in inputConfig are in availableConfigurations
+    if (!TelegrafController::getInstance()->checkInputConfig(inputConfig))
     {
         Instance()->LSMessageReplyErrorInvalidParams(sh, msg);
         return false;
     }
 
-    if (!updateConfig(inputConfig))
+    if (!TelegrafController::getInstance()->setConfig(inputConfig))
     {
         Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
         return false;
     }
 
-    Instance()->LSMessageReplyPayload(sh, msg, (char *)"{\"returnValue\": true}");
-    return true;
-}
-
-std::tuple<bool, tomlObject> getTelegrafConfig()
-{
-    tomlObject telegrafConfig;
-    std::ifstream openFile(TELEGRAF_MAIN_CONFIG);
-    if (!openFile || (openFile.fail()))
-    {
-        openFile.close();
-        return {false, telegrafConfig};
-    }
-
-    telegrafConfig = readTomlFile(TELEGRAF_MAIN_CONFIG);
-    for (auto &it : availableConfiguration)
-    {
-        auto &sectionName = it.first;
-
-        // webOS config will be updated later from webOS config file
-        if (sectionName.compare(0, 6, "webOS.") == 0)
-            continue;
-
-        // override subConfig to mainConfig
-        auto subConfig = readTomlFile(getSectionConfigPath(sectionName));
-        telegrafConfig[sectionName] = subConfig[sectionName];
-    }
-
-    return {true, telegrafConfig};
-}
-
-bool LunaApiCollector::getConfig(LSHandle *sh, LSMessage *msg, void *data)
-{
-    if (!json_tokener_parse(LSMessageGetPayload(msg)))
-    {
-        Instance()->LSMessageReplyErrorBadJSON(sh, msg);
-        return false;
-    }
-
-    bool ret = true;
-    tomlObject telegrafConfig;
-    std::tie(ret, telegrafConfig) = getTelegrafConfig();
-
-    if (!ret)
-    {
-        Instance()->LSMessageReplyPayload(sh, msg, (char *)"{\"returnValue\":false,\"errorCode\":4,\"errorText\":\"Invalid configurations.\"}");
-        return true;
-    }
-
-    bool validJsonString = true;
-    tomlObject webOSConfig;
-    std::tie(validJsonString, webOSConfig) = jsonStringToTomlObject(LunaApiCollector::Instance()->readwebOSConfigJson().stringify().c_str());
-    for (auto &it : webOSConfig)
-    {
-        telegrafConfig[it.first] = it.second;
-    }
-
-    std::string replyConfig = tomlObjectToJsonString(telegrafConfig, std::string("    "));
-    replyConfig = "{\n    \"returnValue\": true,\n    \"config\": " + replyConfig + "\n}";
-
-    Instance()->LSMessageReplyPayload(sh, msg, (char *)replyConfig.c_str());
+    Instance()->LSMessageReplyPayload(sh, msg, "{\"returnValue\": true}");
     return true;
 }
 
@@ -462,7 +265,7 @@ size_t findIndex(std::string inputString, std::string divider, int startIndex)
     return retIndex;
 }
 
-pbnjson::JValue convertDataToJson(std::string data)
+pbnjson::JValue convertDataToJson(std::string pData)
 {
     pbnjson::JValue reply = pbnjson::Object();
     size_t prev = 0;
@@ -470,8 +273,8 @@ pbnjson::JValue convertDataToJson(std::string data)
     std::string divider = ",";
     while (true)
     {
-        cur = findIndex(data, divider, prev);
-        std::string subStr = data.substr(prev, cur - prev);
+        cur = findIndex(pData, divider, prev);
+        std::string subStr = pData.substr(prev, cur - prev);
         int doubleQuotationCount = 0;
         size_t divideIndex = 0;
         for (divideIndex = 0; divideIndex < subStr.length(); divideIndex++)
@@ -489,7 +292,7 @@ pbnjson::JValue convertDataToJson(std::string data)
         }
         reply.put(subStr.substr(0, divideIndex), pbnjson::JValue(subStr.substr(divideIndex + 1, subStr.length() - 1)));
         prev = cur + divider.length();
-        if (cur == data.length())
+        if (cur == pData.length())
         {
             break;
         }
@@ -511,8 +314,13 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
         return false;
     }
 
-    std::string tmpCmd = "telegraf";
-    pbnjson::JValue paramObj = Instance()->convertStringToJson(LSMessageGetPayload(msg));
+    if (!isDevMode()) {
+        Instance()->LSMessageReplyErrorDevModeDisable(sh, msg);
+        return false;
+    }
+
+    std::string tmpCmd = "telegraf -config " + std::string(TELEGRAF_MAIN_CONFIG) + " -config-directory " + std::string(TELEGRAF_CONFIG_DIR);
+    pbnjson::JValue paramObj = stringToJValue(LSMessageGetPayload(msg));
     std::string tmpArguments = " --input-filter ";
     if (paramObj.objectSize() > 0)
     {
@@ -528,10 +336,10 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
         }
         tmpCmd += tmpArguments;
     }
-    tmpCmd += " -test 2>&1";
+    tmpCmd += " --test 2>&1";
 
     pbnjson::JValue reply = pbnjson::Object();
-    std::string cmdResult = Instance()->executeCommand(std::move(tmpCmd));
+    std::string cmdResult = executeCommand(tmpCmd);
     if (cmdResult.find("E! [telegraf] Error") != std::string::npos)
     {
         Instance()->LSMessageReplyErrorInvalidConfigurations(sh, msg);
@@ -579,64 +387,20 @@ bool LunaApiCollector::getData(LSHandle *sh, LSMessage *msg, void *data)
 
     reply.put("returnValue", true);
     reply.put("dataArray", dataArray);
-    Instance()->LSMessageReplyPayload(sh, msg, (char *)(reply.stringify().c_str()));
+    Instance()->LSMessageReplyPayload(sh, msg, reply.stringify().c_str());
 
     return true;
 }
 
-void splitMainConfig()
+void LunaApiCollector::sendToTelegraf(std::string &msg)
 {
-    auto mainConfig = readTomlFile(TELEGRAF_MAIN_CONFIG);
-
-    for (auto &it : mainConfig)
-    {
-        std::string section = it.first;
-        if (section.compare(0, 6, "webOS.") == 0) continue;
-
-        if (availableConfiguration.find(section) != availableConfiguration.end())
-        {
-            auto configPath = getSectionConfigPath(section);
-            if (fileExists(configPath.c_str())) continue;
-            tomlObject plugin;
-
-            for (const auto & configParam : it.second) {
-                plugin[section][configParam.first] = configParam.second;
-            }
-            writeTomlSection(configPath, section, plugin[section]);
-        }
+    if (pThreadForSocket) {
+        pThreadForSocket->sendToMSGQ(msg);
     }
-}
-
-/**
- * When the service initialize
- */
-void LunaApiCollector::initialize()
-{
-    splitMainConfig();
-
-    // for create the configuration directory for sdkagent service
-    Instance()->executeCommand("mkdir -p /var/lib/com.webos.service.sdkagent");
-
-    // Check the flag using startOnBoot file for auto-start on boot
-    std::ifstream startOnBoot("/var/lib/com.webos.service.sdkagent/startOnBoot");
-    if (startOnBoot.good())
-    {
-        Instance()->executeCommand("systemctl start telegraf");
-    }
-    startOnBoot.close();
 }
 
 // For LSSubscriptionReply
 void LunaApiCollector::postEvent(void *subscribeKey, void *payload)
 {
     LunaApiBaseCategory::postEvent(Instance()->pLSHandle, subscribeKey, payload);
-}
-
-/**
- * Send data to socket thread using msg queue
- */
-void LunaApiCollector::sendToTelegraf(std::string &data)
-{
-    if (pThreadForSocket != NULL)
-        pThreadForSocket->sendToMSGQ(data);
 }

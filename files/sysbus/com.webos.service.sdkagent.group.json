@@ -3,6 +3,6 @@
         "com.webos.service.sdkagent"
     ],
     "sdkagent.collector": [
-        "dev"
+        "oem"
     ]
 }
