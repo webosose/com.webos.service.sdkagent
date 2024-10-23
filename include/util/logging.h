@@ -18,6 +18,7 @@
 #define __SERVICE_LOGGING_H__
 
 #include <PmLogLib.h>
+#include "common.h"
 
 #define SDK_LOG_CRITICAL(msgid, kvcount, ...) \
         PmLogCritical(getServiceContext(), msgid, kvcount, ##__VA_ARGS__)
@@ -34,10 +35,27 @@
 #define SDK_LOG_DEBUG(...) \
         PmLogDebug(getServiceContext(), ##__VA_ARGS__)
 
-void logKmsg(const char *fmt, ...);
+/*
+// extern "C" void logKmsg(const char *fmt, ...);
 #define SDK_KMSG_DEBUG_MSG(b, fmt, arg...) \
         if ((b))                           \
         logKmsg(fmt, ##arg)
+*/
+
+/*
+#define LOG_BUF_MAX 512
+template<typename... Args>
+void newLogKmsg(const char* format, Args ...args)
+{
+    char buf[LOG_BUF_MAX];
+    sprintf(buf, format, args...);
+    std::string strBuffer = std::string(buf);
+    writeTextFile("dev/kmsg", strBuffer);
+}
+#define SDK_KMSG_DEBUG_MSG(b, fmt, arg...) if ((b)) newLogKmsg(fmt, ##arg)
+*/
+
+void SDK_KMSG_DEBUG_MSG(const char* format, const char* functionName);
 
 extern PmLogContext getServiceContext();
 

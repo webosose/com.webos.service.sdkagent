@@ -17,6 +17,8 @@
 #include "threadForSocket.h"
 #include "logging.h"
 
+const static std::string sockPath = "/tmp/telegraf.sock";
+
 ThreadForSocket::ThreadForSocket()
 {
     SocketHandle *socketHandle = g_new(SocketHandle, 1);
@@ -33,21 +35,21 @@ ThreadForSocket::~ThreadForSocket()
     socketHandle_destroy(pSocketHandle);
 }
 
-void ThreadForSocket::sendToMSGQ(std::string &data)
+void ThreadForSocket::sendToMSGQ(std::string &msgData)
 {
     gint test_data = 0;
     SocketMsg *msg = g_slice_new(SocketMsg);
     if (msg != NULL)
     {
-        msg->send_string = g_strdup(data.c_str());
+        msg->send_string = g_strdup(msgData.c_str());
         msg->data_int = GINT_TO_POINTER(test_data);
     }
     g_async_queue_push(pSocketHandle->queue, msg);
 }
 
-gpointer ThreadForSocket::socketHandle_process(gpointer data)
+gpointer ThreadForSocket::socketHandle_process(gpointer sData)
 {
-    SocketHandle *socketHandle = (SocketHandle *)data;
+    SocketHandle *socketHandle = (SocketHandle *)sData;
     while (socketHandle != NULL)
     {
         SocketMsg *msg = (SocketMsg *)g_async_queue_pop(socketHandle->queue);
@@ -64,18 +66,24 @@ gpointer ThreadForSocket::socketHandle_process(gpointer data)
              * Need to check tag key, field key
              */
             int sock = socket(AF_UNIX, SOCK_DGRAM, 0);
-            struct sockaddr_un sock_name;
             if (sock < 0)
             {
                 SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error opening datagram socket [%d:%s]\n", errno, strerror(errno));
                 continue;
             }
 
-            sock_name.sun_family = AF_UNIX;
-            std::string sockPath = "/tmp/telegraf.sock";
-            strncpy(sock_name.sun_path, sockPath.c_str(), (sockPath.length() + 1));
+            // if (!fileExists(sockPath.c_str())) {
+            //     executeCommand("touch /tmp/telegraf.sock");
+            // }
 
-            if (sendto(sock, sendData.c_str(), sendData.length(), 0, (struct sockaddr *)&sock_name, sizeof(struct sockaddr_un)) < 0)
+            struct sockaddr_un sock_name;
+            sock_name.sun_family = AF_UNIX;
+            strncpy(sock_name.sun_path, sockPath.c_str(), sizeof(sock_name.sun_path));
+            sock_name.sun_path[sizeof(sock_name.sun_path) - 1] = '\0';
+
+            size_t sock_size = SUN_LEN(&sock_name);
+
+            if (sendto(sock, sendData.c_str(), sendData.length(), 0, (struct sockaddr *)&sock_name, sock_size) < 0)
             {
                 SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error sending datagram message [%d:%s]\n", errno, strerror(errno));
             }

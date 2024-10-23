@@ -16,30 +16,35 @@
 
 #include "logging.h"
 #include "lunaApiCollector.h"
+#include <csignal>
 
 GMainLoop *mainLoop;
 
-void signalHandler(int signal)
+extern "C" void signalHandler(int signal)
 {
     switch (signal)
     {
     case SIGSTOP:
-        SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGSTOP\n", MSGID_SDKAGENT, __FUNCTION__);
+        // SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGSTOP\n", MSGID_SDKAGENT, __FUNCTION__);
+        SDK_KMSG_DEBUG_MSG("%s() , case SIGSTOP\n", __FUNCTION__);
         break;
 
     case SIGCONT:
-        SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGCONT\n", MSGID_SDKAGENT, __FUNCTION__);
+        // SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGCONT\n", MSGID_SDKAGENT, __FUNCTION__);
+        SDK_KMSG_DEBUG_MSG("%s() , case SIGCONT\n", __FUNCTION__);
         break;
 
     case SIGTERM:
-        SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGTERM\n", MSGID_SDKAGENT, __FUNCTION__);
+        // SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGTERM\n", MSGID_SDKAGENT, __FUNCTION__);
+        SDK_KMSG_DEBUG_MSG("%s() , case SIGTERM\n", __FUNCTION__);
         if (g_main_loop_is_running(mainLoop))
             g_main_loop_quit(mainLoop);
         g_main_loop_unref(mainLoop);
         break;
 
     case SIGINT:
-        SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGINT\n", MSGID_SDKAGENT, __FUNCTION__);
+        // SDK_KMSG_DEBUG_MSG(1, "[%s] %s( ... ) , case SIGINT\n", MSGID_SDKAGENT, __FUNCTION__);
+        SDK_KMSG_DEBUG_MSG("%s() , case SIGINT\n", __FUNCTION__);
         if (g_main_loop_is_running(mainLoop))
             g_main_loop_quit(mainLoop);
         g_main_loop_unref(mainLoop);
@@ -53,10 +58,10 @@ void registSignalHandler()
      * Register a function to be able to gracefully handle termination signals
      * from the OS or other processes.
      */
-    signal(SIGSTOP, signalHandler);
-    signal(SIGCONT, signalHandler);
-    signal(SIGTERM, signalHandler);
-    signal(SIGINT, signalHandler);
+    std::signal(SIGSTOP, signalHandler);
+    std::signal(SIGCONT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+    std::signal(SIGINT, signalHandler);
 }
 
 int main(int argc, char **argv)

@@ -62,10 +62,13 @@ set(SYSTEMD_FILE_DIR "${CMAKE_SOURCE_DIR}/files/systemd")
 set(SRC_LIST
     ${SRC_DIR}/lunaApi/lunaApiBaseCategory.cpp
     ${SRC_DIR}/lunaApi/lunaApiCollector.cpp
+    ${SRC_DIR}/lunaApi/telegrafController.cpp
     ${SRC_DIR}/lunaApi/threadForInterval.cpp
     ${SRC_DIR}/lunaApi/threadForSocket.cpp
     ${SRC_DIR}/util/logging.cpp
     ${SRC_DIR}/util/tomlParser.cpp
+    ${SRC_DIR}/util/common.cpp
+    ${SRC_DIR}/util/errorCode.cpp
     ${SRC_DIR}/main.cpp
 )
 
