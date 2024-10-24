@@ -18,7 +18,6 @@
 #define __SERVICE_LOGGING_H__
 
 #include <PmLogLib.h>
-#include "common.h"
 
 #define SDK_LOG_CRITICAL(msgid, kvcount, ...) \
         PmLogCritical(getServiceContext(), msgid, kvcount, ##__VA_ARGS__)
