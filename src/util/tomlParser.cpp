@@ -79,7 +79,6 @@ bool writeTomlSection(const std::string &filePath, const std::string &sectionNam
     strBuffer += "[" + sectionName + "]\n";
     for (const auto &sectionData : obj)
     {
-        // ss << sectionData.first << "=" << sectionData.second << '\n';
         strBuffer += sectionData.first + "=" + sectionData.second + "\n";
     }
 

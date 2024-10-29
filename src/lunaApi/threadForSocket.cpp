@@ -83,6 +83,8 @@ gpointer ThreadForSocket::socketHandle_process(gpointer sData)
 
             size_t sock_size = SUN_LEN(&sock_name);
 
+            SDK_LOG_INFO(MSGID_SDKAGENT, 0, "Prepare to send data to socket");
+
             if (sendto(sock, sendData.c_str(), sendData.length(), 0, (struct sockaddr *)&sock_name, sock_size) < 0)
             {
                 SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error sending datagram message [%d:%s]\n", errno, strerror(errno));

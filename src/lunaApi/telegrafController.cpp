@@ -93,8 +93,9 @@ static std::tuple<bool, tomlObject> getTelegrafConfig()
 
 void TelegrafController::initAvailableConfigurations()
 {
+    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s is called", __FUNCTION__);
     std::string strBuffer = readTextFile(TELEGRAF_AVAILABLE_CONFIG);
-    if (strBuffer.empty()) return;
+    if (strBuffer.empty() || strBuffer == "") return;
 
     auto initConfig = json_tokener_parse(strBuffer.c_str());
     if (!initConfig)
@@ -167,6 +168,7 @@ void TelegrafController::loadConfig()
 
 void TelegrafController::splitMainConfig()
 {
+    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "%s is called", __FUNCTION__);
     auto mainConfig = readTomlFile(TELEGRAF_MAIN_CONFIG);
 
     for (auto &it : mainConfig)
@@ -216,16 +218,7 @@ SDKError TelegrafController::start()
 {
     if (!isDevMode()) {
         return SDKError::DEVMODE_DISABLE;
-    }
-
-    char *const argv[] = {
-        strdup(TELEGRAF_BIN),
-        strdup("-config"),
-        strdup(TELEGRAF_MAIN_CONFIG),
-        strdup("-config-directory"),
-        strdup(TELEGRAF_CONFIG_DIR),
-        NULL
-    };
+    }    
 
     if (!isRunning()) {
 
@@ -248,6 +241,15 @@ SDKError TelegrafController::start()
 
         signal(SIGCHLD, terminationHandler);
 
+        char *const argv[] = {
+            strdup(TELEGRAF_BIN),
+            strdup("-config"),
+            strdup(TELEGRAF_MAIN_CONFIG),
+            strdup("-config-directory"),
+            strdup(TELEGRAF_CONFIG_DIR),
+            NULL
+        };
+
         auto errCode = posix_spawn(&pid_, TELEGRAF_BIN, NULL, NULL, argv, NULL);
         if ((errCode == 0) && (pid_ != 0)) {
             SDK_LOG_INFO(MSGID_SDKAGENT, 0, "Started telegraf with pid = %d", pid_);
@@ -258,6 +260,11 @@ SDKError TelegrafController::start()
         }
         else {
             SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Failed to start telegraf with errorCode: %d", errCode);
+        }
+
+        SDK_LOG_INFO(MSGID_SDKAGENT, 0, "Free posix_spawn char* input");
+        for (int i = 0; i < 5; i++) {
+            free(argv[i]);
         }
     }
     else {
