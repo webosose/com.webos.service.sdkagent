@@ -372,7 +372,7 @@ bool checkProcessName(std::string processName)
     return !pid.empty();
 }
 
-void TelegrafController::updateProcstatConfig(const pbnjson::JValue & webOSConfigJson)
+extern "C" void updateProcstatConfig(const pbnjson::JValue & webOSConfigJson)
 {
     std::string procstatConfigFile = std::string(TELEGRAF_CONFIG_DIR) + "procstat.conf";
 
@@ -407,7 +407,7 @@ void TelegrafController::updateProcstatConfig(const pbnjson::JValue & webOSConfi
     executeCommand("rm -fr " + procstatConfigFile);
 }
 
-void TelegrafController::updateWebOSConfig(tomlObject &inputConfig)
+extern "C" void updateWebOSConfig(tomlObject &inputConfig)
 {
     pbnjson::JValue webOSConfigJson = readWebOSJsonConfig();
 

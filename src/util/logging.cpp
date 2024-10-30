@@ -54,30 +54,6 @@ PmLogContext getServiceContext()
     return logContext;
 }
 
-// For output to kernel message.
-// #define LOG_BUF_MAX 512
-// extern "C" void logKmsg(const char *fmt, ...)
-// {
-//     char buf[LOG_BUF_MAX];
-//     va_list ap;
-//     int log_fd;
-
-//     log_fd = open("/dev/kmsg", O_WRONLY);
-
-//     if (log_fd < 0) return;
-
-//     va_start(ap, fmt);
-//     vsnprintf(buf, LOG_BUF_MAX, fmt, ap);
-//     buf[LOG_BUF_MAX - 1] = 0;
-//     va_end(ap);
-
-//     ssize_t bytes_written = write(log_fd, buf, strlen(buf));
-//     if (bytes_written == -1) {
-//         perror("Error writing to file");
-//     }
-//     close(log_fd);
-// }
-
 #define LOG_BUF_MAX 512
 void SDK_KMSG_DEBUG_MSG(const char* format, const char* functionName) {
     char buf[LOG_BUF_MAX];

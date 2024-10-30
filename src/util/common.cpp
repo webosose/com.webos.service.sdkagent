@@ -200,8 +200,7 @@ pbnjson::JValue stringToJValue(const char* rawData)
     pbnjson::JDomParser parser;
     if (!parser.parse(input, schema))
     {
-        // return pbnjson::JValue();
-        return pbnjson::Object();
+        return pbnjson::JValue();
     }
     return parser.getDom();
 }
