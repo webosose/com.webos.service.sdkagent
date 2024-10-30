@@ -160,25 +160,25 @@ float getProcessTime(const std::string& sPID)
     if(access(psPath.c_str(), F_OK) == 0)
     {
         FILE * fp = fopen(psPath.c_str(), "r");
-        fgets(buffer, 1024, fp);
-        char ** tokens = str_split(buffer, ' ');
+        if (NULL != fp) {
+            if ( fgets(buffer, 1024, fp) != NULL ) {
+                char ** tokens = str_split(buffer, ' ');
+                if (tokens) {
+                    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "token for utime: %s", *(tokens + 13));
+                    SDK_LOG_INFO(MSGID_SDKAGENT, 0, "token for stime: %s", *(tokens + 14));
+                    utime = strtof(tokens[13], NULL);
+                    stime = strtof(tokens[14], NULL);
 
-        if (tokens)
-        {
-            SDK_LOG_INFO(MSGID_SDKAGENT, 0, "token for utime: %s", *(tokens + 13));
-            SDK_LOG_INFO(MSGID_SDKAGENT, 0, "token for stime: %s", *(tokens + 14));
-            utime = strtof(tokens[13], NULL);
-            stime = strtof(tokens[14], NULL);
-
-            int i;
-            for (i = 0; *(tokens + i); i++) {
-                free(*(tokens + i));
+                    int i;
+                    for (i = 0; *(tokens + i); i++) {
+                        free(*(tokens + i));
+                    }
+                    printf("\n");
+                    free(tokens);
+                }
             }
-            printf("\n");
-            free(tokens);
+            fclose(fp);
         }
-
-        if (fp) fclose(fp);
     }
 
     return utime + stime;
