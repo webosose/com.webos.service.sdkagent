@@ -36,19 +36,16 @@ public:
     static inline tomlObject _allConfig {};
 
 protected:
-    
+
     TelegrafController();
     ~TelegrafController();
-   
+
 private:
     void initAvailableConfigurations();
     void splitMainConfig();
     bool updateSectionConfig(const std::string &section, tomlObject &inputConfig);
-    void updateWebOSConfig(tomlObject &inputConfig);
-    void updateProcstatConfig(const pbnjson::JValue & webOSConfigJson);
-    
     static void loadConfig();
-    
+
 public:
     bool checkInputConfig(tomlObject &inputConfig);
 
