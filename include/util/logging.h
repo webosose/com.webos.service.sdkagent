@@ -54,7 +54,7 @@ void newLogKmsg(const char* format, Args ...args)
 #define SDK_KMSG_DEBUG_MSG(b, fmt, arg...) if ((b)) newLogKmsg(fmt, ##arg)
 */
 
-void SDK_KMSG_DEBUG_MSG(const char* format, const char* functionName);
+extern "C" void SDK_KMSG_DEBUG_MSG(const char* format, const char* functionName);
 
 extern PmLogContext getServiceContext();
 

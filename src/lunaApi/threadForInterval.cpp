@@ -78,108 +78,31 @@ static unsigned long page_to_kb(int x)
     return (unsigned long)(x * npage_per_kb);
 }
 
-char** str_split(char* a_str, const char a_delim)
-{
-    char** result    = 0;
-    size_t count     = 0;
-    char* tmp        = a_str;
-    char* last_comma = 0;
-    char delim[2];
-    delim[0] = a_delim;
-    delim[1] = 0;
-
-    // Count how many elements will be extracted.
-    while (*tmp)
-    {
-        if (a_delim == *tmp)
-        {
-            count++;
-            last_comma = tmp;
-        }
-        tmp++;
-    }
-
-    // Add space for trailing token.
-    count += last_comma < (a_str + strlen(a_str) - 1);
-
-    // Add space for terminating null string so caller knows where the list of returned strings ends.
-    count++;
-
-    result = (char**) malloc(sizeof(char*) * count);
-
-    if (result)
-    {
-        size_t idx  = 0;
-        char* token = strtok(a_str, delim);
-
-        while (token)
-        {
-            assert(idx < count);
-            *(result + idx++) = strdup(token);
-            token = strtok(0, delim);
-        }
-        assert(idx == count - 1);
-        *(result + idx) = 0;
-    }
-
-    return result;
-}
-
-char buffer[1024];
-
 // get utime/stime in /proc/pid/stat
 float getProcessTime(const std::string& sPID)
 {
-    std::string psPath = "/proc/" + sPID + "/stat";
-    std::string line;
     float utime = 0.0f;
     float stime = 0.0f;
 
-    // if(access(psPath.c_str(), F_OK) == 0)
-    // {
-    //     gchar * buffer = NULL;
-    //     gsize bufferSize = 0;
-    //     GError * err = NULL;
+    gchar * buffer = NULL;
+    gsize bufferSize = 0;
+    GError * err = NULL;
 
-    //     if (!g_file_get_contents(psPath.c_str(), &buffer, &bufferSize, &err)) {
-    //         SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error reading /proc/%s/stat", sPID.c_str());
-    //     }
-    //     else {
-    //         // we want to obtain 14-15th values (utime, stime). 
-    //         // split to maximum 16 tokens (last token is for the rest of the string)
-    //         gchar **tokens = g_strsplit(buffer, " \t\n\0", 16);
-    //         utime = (float)g_strtod(tokens[13], NULL);
-    //         stime = (float)g_strtod(tokens[14], NULL);
-    //         g_strfreev(tokens);
-    //     }
-        
-    //     g_free(buffer);
-    //     g_error_free(err);
-    // }
-
-    if(access(psPath.c_str(), F_OK) == 0)
-    {
-        FILE * fp = fopen(psPath.c_str(), "r");
-        fgets(buffer, 1024, fp);
-        char ** tokens = str_split(buffer, ' ');
-
-        if (tokens)
-        {
-            SDK_LOG_INFO(MSGID_SDKAGENT, 0, "token for utime: %s", *(tokens + 13));
-            SDK_LOG_INFO(MSGID_SDKAGENT, 0, "token for stime: %s", *(tokens + 14));
-            utime = strtof(tokens[13], NULL);
-            stime = strtof(tokens[14], NULL);
-
-            int i;
-            for (i = 0; *(tokens + i); i++) {
-                free(*(tokens + i));
-            }
-            printf("\n");
-            free(tokens);
-        }
-
-        if (fp) fclose(fp);
+    std::string psPath = "/proc/" + sPID + "/stat";
+    if (!g_file_get_contents(psPath.c_str(), &buffer, &bufferSize, &err)) {
+        SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error reading %s", psPath.c_str());
     }
+    else {
+        // we want to obtain 14-15th values (utime, stime).
+        // split to maximum 16 tokens (last token is for the rest of the string)
+        gchar **tokens = g_strsplit(buffer, " ", 16);
+        utime = (float)g_strtod(tokens[13], NULL);
+        stime = (float)g_strtod(tokens[14], NULL);
+        g_strfreev(tokens);
+    }
+
+    g_free(buffer);
+    g_error_free(err);
 
     return utime + stime;
 }
@@ -209,30 +132,17 @@ std::string intervalCPUsage(int pid)
 
 std::string intervalGPUsage(const std::string & sPID)
 {
-    int gpu = 0;
+    unsigned long gpu = 0;
     std::string procGPUPath = "/proc/gpu/" + sPID;
-    if (access(procGPUPath.c_str(), F_OK) == 0)
-    {
-        gchar * buffer = NULL;
-        gsize bufferSize = 0;
-        GError * err = NULL;
-
-        if (!g_file_get_contents(procGPUPath.c_str(), &buffer, &bufferSize, &err)) {
-            SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error reading /proc/gpu/%s", sPID.c_str());
+    FILE * fp = fopen(procGPUPath.c_str(), "r");
+    if (NULL != fp) {
+        if (fscanf(fp, "%lu", &gpu) != 1) {
+            SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error reading %s", procGPUPath.c_str());
         }
-        else {
-            gchar **tokens = g_strsplit(buffer, " \t\n\0", 2);
-            gpu = (int)g_ascii_strtoll(tokens[0], (char**)NULL, 10);
-            g_strfreev(tokens);
-        }
-        
-        g_free(buffer);
-        g_error_free(err);
+        fclose(fp);
     }
-    else
-    {
-        SDK_LOG_INFO(MSGID_SDKAGENT, 0, "Cannot access /proc/gpu/%s", sPID.c_str());
-        return "0";
+    else {
+        SDK_LOG_ERROR(MSGID_SDKAGENT, 0, "Error reading %s", procGPUPath.c_str());
     }
 
     return std::to_string(page_to_kb(gpu) / 1024);      // to KB
